@@ -1,0 +1,32 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "mibici"
+version = "0.0.1"
+description = "Primer Draft Proyecto integrador Equipo 36"
+authors = [
+  { name = "Equipo 36" },
+]
+license = { file = "LICENSE" }
+readme = "README.md"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License"
+]
+requires-python = "==3.14.4"
+
+
+[tool.ruff]
+line-length = 99
+src = ["mibici"]
+include = ["pyproject.toml", "mibici/**/*.py"]
+
+[tool.ruff.lint]
+extend-select = ["I"]  # Add import sorting
+
+[tool.ruff.lint.isort]
+known-first-party = ["mibici"]
+force-sort-within-sections = true
+
