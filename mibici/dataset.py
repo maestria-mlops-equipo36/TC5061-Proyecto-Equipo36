@@ -35,15 +35,61 @@ def calcular_hash_archivo(filepath: Path) -> str:
 
 
 def asegurar_nomenclatura(output_dir: Path = EXTERNAL_DATA_DIR) -> Path:
-    """Descarga la nomenclatura oficial de estaciones si no existe localmente."""
+    """Descarga la nomenclatura oficial de estaciones si no existe localmente o es inválida."""
     output_dir.mkdir(parents=True, exist_ok=True)
     nomenclatura_file = output_dir / "nomenclatura_2026_09.csv"
-    if not nomenclatura_file.exists():
-        logger.info(f"Descargando nomenclatura desde {NOMENCLATURA_URL}...")
-        resp = requests.get(NOMENCLATURA_URL, timeout=30)
-        resp.raise_for_status()
-        nomenclatura_file.write_bytes(resp.content)
-        logger.success(f"Nomenclatura guardada en {nomenclatura_file}")
+
+    # Si ya existe y es un CSV válido no vacío, reutilizarlo
+    if nomenclatura_file.exists() and nomenclatura_file.stat().st_size > 1024:
+        try:
+            df_check = pd.read_csv(nomenclatura_file, nrows=5)
+            if "id" in df_check.columns or any("lat" in str(c).lower() for c in df_check.columns):
+                logger.info(f"Reutilizando nomenclatura existente válida en: {nomenclatura_file}")
+                return nomenclatura_file
+        except Exception:
+            logger.warning("El archivo existente no es un CSV válido. Reintentando descarga...")
+
+    logger.info(f"Descargando nomenclatura desde {NOMENCLATURA_URL}...")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml,text/csv,*/*",
+    }
+
+    descarga_exitosa = False
+
+    # 1. Intentar con requests usando headers estándar
+    try:
+        resp = requests.get(NOMENCLATURA_URL, headers=headers, timeout=30)
+        if resp.status_code == 200 and len(resp.content) > 1024:
+            nomenclatura_file.write_bytes(resp.content)
+            descarga_exitosa = True
+            logger.success("Descarga completada con requests.")
+        else:
+            logger.warning(f"requests retornó código {resp.status_code}. Probando método alternativo...")
+    except Exception as e:
+        logger.warning(f"Error en descarga con requests ({e}). Probando método alternativo...")
+
+    # 2. Mecanismo alternativo con curl / urllib si requests falló
+    if not descarga_exitosa:
+        import subprocess
+        logger.info("Intentando descarga alternativa mediante curl...")
+        try:
+            subprocess.run(
+                ["curl", "-s", "-L", "-A", headers["User-Agent"], "-o", str(nomenclatura_file), NOMENCLATURA_URL],
+                check=True,
+                timeout=30,
+            )
+            descarga_exitosa = True
+            logger.success("Descarga completada con curl.")
+        except Exception as e:
+            logger.error(f"Fallo en descarga alternativa con curl: {e}")
+
+    # Validar que el archivo descargado sea un CSV válido
+    if not nomenclatura_file.exists() or nomenclatura_file.stat().st_size < 100:
+        raise RuntimeError(
+            f"No se pudo descargar o validar un archivo CSV correcto desde {NOMENCLATURA_URL}."
+        )
+
     return nomenclatura_file
 
 
