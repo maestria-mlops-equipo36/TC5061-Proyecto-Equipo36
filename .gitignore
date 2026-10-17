@@ -2,6 +2,16 @@
 /data/**
 !/data/*/
 !/data/**/.gitkeep
+!/data/data_manifest.json
+
+# MLFlow & Models
+mlruns/
+mlartifacts/
+mlflow.db
+models/*.pkl
+models/*.joblib
+models/*.onnx
+
 # Mac OS-specific storage files
 .DS_Store
 

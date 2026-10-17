@@ -109,7 +109,47 @@ data/interim/validacion_esquemas.csv
 
 En la revisión inicial se verificaron **142 archivos** y se obtuvo correspondencia de esquemas después de normalizar variaciones de codificación en el encabezado `Año_de_nacimiento`. **Esta validación no implica que los valores de todas las filas sean correctos**; la calidad de los registros se analizará por separado.
 
-Si no se detectan archivos, comprobar que `MIBICI_DATA_DIR` apunte a la carpeta correcta y que los nombres sigan el patrón `datos_abiertos_AAAA_MM.csv`.
+### 5.3 Ingesta consolidada y versionado de datos
+
+Ejecuta el pipeline de ingesta reproducible para descargar la nomenclatura, procesar los 12 meses seleccionados (octubre 2025 a septiembre 2026), exportar a Parquet y generar el manifiesto de datos con hashes SHA-256 (`data/data_manifest.json`):
+
+```bash
+python -m mibici.dataset
+```
+
+### 5.4 Ingeniería de características (Feature Engineering P3)
+
+Calcula los vectores de comportamiento por estación (ratios de flujo neto, porcentajes en horas pico matutina y vespertina, rotación de anclajes y uso en fines de semana):
+
+```bash
+python -m mibici.features
+```
+
+Genera:
+- `data/processed/features_p3_estaciones.parquet`
+
+### 5.5 Experimentos en MLFlow Tracking (Pregunta 3)
+
+Ejecuta el pipeline de modelado y clustering registrando parámetros, métricas (`silhouette_score`, `davies_bouldin_score`, `calinski_harabasz_score`), etiquetas de Git y artefactos visuales en MLFlow:
+
+```bash
+# Baseline: KMeans con k=3
+python -m mibici.modeling.train --modelo-tipo kmeans --n-clusters 3
+
+# Modelo candidato: KMeans con k=4
+python -m mibici.modeling.train --modelo-tipo kmeans --n-clusters 4
+
+# Modelo alternativo: Gaussian Mixture Models (GMM)
+python -m mibici.modeling.train --modelo-tipo gmm --n-clusters 4
+```
+
+Para visualizar la interfaz de MLFlow y consultar los runs:
+
+```bash
+mlflow ui
+```
+
+Acceder desde el navegador a `http://127.0.0.1:5000`.
 
 ## 6. Organización del proyecto
 
