@@ -190,3 +190,37 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# ==========================================
+# MiBici Data (para no subir los .csv a Git)
+# ==========================================
+/data/**
+!/data/*/
+!/data/**/.gitkeep
+*.csv
+*.parquet
+
+# ==========================================
+# MLFlow Tracking y Artefactos 
+# ==========================================
+mlruns/
+mlartifacts/
+*.sqlite
+
+# ==========================================
+# Modelos 
+# ==========================================
+models/
+*.pkl
+*.joblib
+*.onnx
+
+# ==========================================
+# Entornos 
+# ==========================================
+.venv/
+env/
+.env
+
+
+.DS_Store
