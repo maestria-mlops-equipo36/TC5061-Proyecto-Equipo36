@@ -197,6 +197,251 @@ def calcular_perfil_estaciones_p3(
     return df_features[columnas_finales]
 
 
+def calcular_demanda_diaria_p1(df_viajes: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcula la demanda diaria observada por estación para la Pregunta 1 (Regresión).
+
+    Cada fila representa una estación en una fecha y contiene el número de
+    viajes iniciados. No se generan registros para días sin salidas.
+
+    Parámetros:
+    -----------
+    df_viajes : pd.DataFrame
+        Datos limpios de viajes con 'Inicio_del_viaje' y 'Origen_Id'.
+
+    Retorna:
+    --------
+    pd.DataFrame con columnas: 'fecha', 'estacion_id', 'viajes_iniciados'.
+    """
+    logger.info("Calculando demanda diaria por estación para P1...")
+
+    # 1. Seleccionar únicamente las columnas necesarias
+    df = df_viajes[["Inicio_del_viaje", "Origen_Id"]].copy()
+
+    # 2. Obtener la fecha de inicio sin la hora
+    df["fecha"] = df["Inicio_del_viaje"].dt.normalize()
+
+    # 3. Contar los viajes iniciados por estación y fecha
+    df_demanda = (
+        df.groupby(["fecha", "Origen_Id"])
+        .size()
+        .reset_index(name="viajes_iniciados")
+        .rename(columns={"Origen_Id": "estacion_id"})
+    )
+
+    # 4. Ordenar los registros cronológicamente por estación
+    df_demanda = (
+        df_demanda.sort_values(["estacion_id", "fecha"])
+        .reset_index(drop=True)
+    )
+
+    logger.success(
+        f"Demanda diaria calculada: {len(df_demanda):,} registros "
+        f"para {df_demanda['estacion_id'].nunique()} estaciones."
+    )
+
+    return df_demanda
+
+
+def preparar_demanda_diaria_p1(
+    df_demanda: pd.DataFrame,
+    fecha_inicio: str = "2025-10-01",
+    fecha_fin_train: str = "2026-06-30",
+    fecha_fin: str = "2026-09-30",
+    cobertura_minima: float = 0.95,
+) -> pd.DataFrame:
+    """
+    Prepara una serie diaria continua por estación para P1.
+
+    Selecciona estaciones utilizando exclusivamente la cobertura observada
+    durante entrenamiento y completa los días sin salidas registradas con cero.
+
+    Parámetros:
+    -----------
+    df_demanda : pd.DataFrame
+        Tabla generada por calcular_demanda_diaria_p1().
+    fecha_inicio : str
+        Primera fecha del periodo de análisis.
+    fecha_fin_train : str
+        Última fecha utilizada para seleccionar estaciones.
+    fecha_fin : str
+        Última fecha del periodo completo.
+    cobertura_minima : float
+        Proporción mínima de días con salidas durante entrenamiento.
+
+    Retorna:
+    --------
+    pd.DataFrame con columnas: 'fecha', 'estacion_id', 'viajes_iniciados'.
+    """
+    logger.info("Preparando calendario diario de estaciones para P1...")
+
+    inicio = pd.Timestamp(fecha_inicio)
+    fin_train = pd.Timestamp(fecha_fin_train)
+    fin = pd.Timestamp(fecha_fin)
+
+    if not (inicio <= fin_train <= fin):
+        raise ValueError("Las fechas deben cumplir: inicio <= fin_train <= fin.")
+
+    if not 0 < cobertura_minima <= 1:
+        raise ValueError("cobertura_minima debe estar entre 0 y 1.")
+
+    # 1. Seleccionar únicamente el periodo de entrenamiento
+    df_train = df_demanda[
+        (df_demanda["fecha"] >= inicio)
+        & (df_demanda["fecha"] <= fin_train)
+    ]
+
+    # 2. Calcular cobertura histórica por estación
+    dias_train = len(pd.date_range(inicio, fin_train))
+
+    actividad = (
+        df_train.groupby("estacion_id")["fecha"]
+        .nunique()
+    )
+
+    estaciones_seleccionadas = actividad[
+        actividad / dias_train >= cobertura_minima
+    ].index
+
+    logger.info(
+        f"Estaciones seleccionadas: {len(estaciones_seleccionadas)} "
+        f"(cobertura mínima: {cobertura_minima:.0%})."
+    )
+
+    # 3. Crear todas las combinaciones estación-fecha
+    fechas = pd.date_range(inicio, fin)
+
+    calendario = pd.MultiIndex.from_product(
+        [estaciones_seleccionadas, fechas],
+        names=["estacion_id", "fecha"],
+    ).to_frame(index=False)
+
+    # 4. Incorporar la demanda observada
+    df_preparado = calendario.merge(
+        df_demanda,
+        on=["estacion_id", "fecha"],
+        how="left",
+    )
+
+    # 5. Completar días sin salidas registradas
+    dias_sin_registros = df_preparado["viajes_iniciados"].isna().sum()
+
+    df_preparado["viajes_iniciados"] = (
+        df_preparado["viajes_iniciados"]
+        .fillna(0)
+        .astype(int)
+    )
+
+    logger.info(
+        f"Combinaciones estación-día sin registros completadas con cero: "
+        f"{dias_sin_registros:,}."
+    )
+
+    logger.success(
+        f"Calendario P1 preparado: {len(df_preparado):,} registros "
+        f"para {len(estaciones_seleccionadas)} estaciones."
+    )
+
+    return df_preparado
+
+
+def generar_caracteristicas_regresion_p1(
+    df_demanda: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Genera características temporales e históricas para P1 (Regresión).
+
+    Cada fila representa una estación en una fecha. Las características
+    históricas utilizan exclusivamente viajes de días anteriores.
+
+    Requiere una serie diaria continua por estación, generada previamente
+    mediante preparar_demanda_diaria_p1().
+
+    Parámetros:
+    -----------
+    df_demanda : pd.DataFrame
+        DataFrame con 'fecha', 'estacion_id' y 'viajes_iniciados'.
+
+    Retorna:
+    --------
+    pd.DataFrame con la demanda diaria y las características de regresión.
+    """
+    logger.info("Generando características históricas para P1...")
+
+    # 1. Copiar y ordenar los datos
+    df = df_demanda.copy()
+    df["fecha"] = pd.to_datetime(df["fecha"])
+
+    df = df.sort_values(
+        ["estacion_id", "fecha"]
+    ).reset_index(drop=True)
+
+    # 2. Verificar que no existan registros duplicados
+    if df.duplicated(["estacion_id", "fecha"]).any():
+        raise ValueError(
+            "Existen registros duplicados para una misma estación y fecha."
+        )
+
+    # 3. Verificar que el calendario sea continuo por estación
+    diferencia_dias = df.groupby("estacion_id")["fecha"].diff()
+
+    if (
+        diferencia_dias.dropna() != pd.Timedelta(days=1)
+    ).any():
+        raise ValueError(
+            "El calendario debe tener una observación por día para cada estación."
+        )
+
+    # 4. Características de calendario
+    df["dia_semana"] = df["fecha"].dt.dayofweek
+    df["mes"] = df["fecha"].dt.month
+
+    df["es_fin_de_semana"] = (
+        df["dia_semana"].isin([5, 6]).astype(int)
+    )
+
+    # 5. Características históricas por estación
+    grupos = df.groupby("estacion_id")["viajes_iniciados"]
+
+    df["viajes_dia_anterior"] = grupos.shift(1)
+    df["viajes_hace_7_dias"] = grupos.shift(7)
+
+    # 6. Promedios móviles: excluir el día que queremos predecir
+    df["promedio_7_dias"] = (
+        grupos.transform(
+            lambda serie: serie.shift(1).rolling(7).mean()
+        )
+    )
+
+    df["promedio_14_dias"] = (
+        grupos.transform(
+            lambda serie: serie.shift(1).rolling(14).mean()
+        )
+    )
+
+    # 7. Rezagos históricos de dos y cuatro semanas
+    df["viajes_hace_14_dias"] = grupos.shift(14)
+    df["viajes_hace_28_dias"] = grupos.shift(28)
+
+    df["promedio_28_dias"] = grupos.transform(
+        lambda serie: serie.shift(1).rolling(28).mean()
+    )
+
+    df["promedio_mismo_dia_4_semanas"] = (
+        df["viajes_hace_7_dias"]
+        + df["viajes_hace_14_dias"]
+        + grupos.shift(21)
+        + df["viajes_hace_28_dias"]
+    ) / 4
+
+    logger.success(
+        f"Características P1 generadas: {len(df):,} registros "
+        f"para {df['estacion_id'].nunique()} estaciones."
+    )
+
+    return df
+
+
 @app.command()
 def main(
     viajes_path: Path = PROCESSED_DATA_DIR / "viajes_limpios.parquet",

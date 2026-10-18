@@ -220,6 +220,64 @@ git pull origin main
 
 **Pendiente:** validación de calidad a nivel de registros, preparación de datos, análisis exploratorio, desarrollo de modelos y seguimiento de experimentos, según avance el proyecto integrador.
 
+## P3: referencia adicional por reglas de intensidad
+
+Se incorpora una referencia sencilla que agrupa las estaciones según
+`viajes_diarios_por_anclaje`:
+
+- Uso bajo: valores menores o iguales al percentil 33.
+- Uso medio: valores mayores al percentil 33 y menores o iguales al percentil 67.
+- Uso alto: valores mayores al percentil 67.
+
+Los umbrales se calculan a partir de las estaciones del archivo de entrada.
+Esta referencia complementa el análisis; K-Means con k=3 se mantiene como
+baseline oficial del proyecto.
+
+### Ejecución
+
+Con el entorno del proyecto activo y desde la raíz del repositorio:
+
+```bash
+env -u PYTHONPATH python -m mibici.modeling.baseline_reglas
+```
+
+Se requiere el archivo `data/processed/features_p3_estaciones.parquet`,
+generado mediante `python -m mibici.features` después de la ingesta.
+
+### Evaluación y registro
+
+Las agrupaciones se evalúan sobre las mismas siete características
+estandarizadas utilizadas por la configuración espacial de K-Means:
+flujo neto, salidas en pico matutino, salidas en pico vespertino, salidas
+en fin de semana, viajes diarios por anclaje, latitud y longitud.
+
+Se registra la ejecución `P3_reglas_intensidad_k3_espacial` en el experimento
+de MLflow configurado para el proyecto. Se guardan los umbrales, las
+métricas, el número de estaciones por grupo y dos artefactos:
+`estaciones_niveles.csv` y `metricas.json`.
+
+### Resultados observados
+
+La referencia por reglas produjo 160 estaciones de uso bajo, 164 de uso
+medio y 160 de uso alto. Los umbrales fueron aproximadamente 0.9913 y
+3.3040 viajes diarios por anclaje.
+
+| Métrica | Referencia por reglas | K-Means k=3 |
+|---|---:|---:|
+| Silhouette — mayor es mejor | 0.0592 | 0.2323 |
+| Davies-Bouldin — menor es mejor | 4.5544 | 1.3457 |
+| Calinski-Harabasz — mayor es mejor | 32.27 | 117.79 |
+
+Los valores de K-Means corresponden a la ejecución previamente validada.
+La comparación requiere utilizar el mismo conjunto de estaciones y las
+mismas características y transformación.
+
+K-Means obtiene mejores métricas internas que la regla de intensidad.
+Estas métricas describen la estructura de los grupos, pero no demuestran
+por sí solas su utilidad operativa. Los percentiles tampoco garantizan
+grupos de igual tamaño cuando existen valores repetidos.
+
+
 ## 9. Licencia
 
 Este repositorio incluye una licencia MIT (ver [`LICENSE`](LICENSE)). Los datos originales pueden estar sujetos a condiciones de uso distintas: consultar las condiciones publicadas por MiBici.
