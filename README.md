@@ -6,7 +6,7 @@
 
 Repositorio de trabajo colaborativo para organizar, validar y posteriormente analizar datos abiertos de viajes del sistema MiBici. El proyecto utiliza la estructura de **Cookiecutter Data Science** y busca mantener separados el código versionado y los datos originales.
 
-**Repositorio:** https://github.com/maestria-mlops-equipo36/TC5061-Proyecto-Equipo03
+**Repositorio:** https://github.com/maestria-mlops-equipo36/TC5061-Proyecto-Equipo36
 
 ## 1. Datos utilizados
 
