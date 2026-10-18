@@ -1,3 +1,4 @@
+import os
 import json
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -52,7 +53,8 @@ def ejecutar_experimento_p2():
     X_test, y_test = test[pred_columns], test["en_riesgo"]
 
     # MLflow Tracking
-    mlflow.set_tracking_uri("http://localhost:5001")
+    mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+    mlflow.set_tracking_uri(mlflow_uri)
     mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
     version_datos = obtener_hash_datos()
 
