@@ -36,6 +36,45 @@ def extraer_caracteristicas_temporales(df_viajes: pd.DataFrame) -> pd.DataFrame:
     df["pico_vespertino"] = hora.between(17, 20).astype(int)
     return df
 
+def calcular_features_riesgo_p2(
+    df_viajes: pd.DataFrame, df_estaciones: pd.DataFrame, freq: str = "2h"
+) -> pd.DataFrame:
+  """Construye el dataset supervisado para la Pregunta 2 (Clasificación de Riesgo).
+
+  Aproxima el riesgo operativo de desabasto o saturación por estación en
+  ventanas temporales, cruzando los flujos netos con la capacidad instalada y
+  calculando retardos históricos estrictamente anteriores al horizonte
+  predictivo.
+  """
+  df = df_viajes.copy()
+  df["ventana"] = df["Inicio_del_viaje"].dt.floor(freq)
+  #Bicicletas OUT
+  outBikes=(df.groupby(["ventana", "Origen_Id"]).size().reset_index(name="salidas").rename(columns={"Origen_Id": "estacion_id"}))
+  #Bicicletas IN
+  df["ventana_fin"]=df["Fin_del_viaje"].dt.floor(freq)
+  inBikes=(df.groupby(["ventana_fin","Destino_Id"]).size().reset_index(name="llegadas").rename(columns={"ventana_fin": "ventana", "Destino_Id": "estacion_id"}))
+  #Cross de IN & OUT para el balance de capacidad de bikes
+  balance=pd.merge(outBikes, inBikes, on=["ventana", "estacion_id"], how="outer").fillna(0)
+  balance=balance.merge(df_estaciones[["estacion_id", "capacidad", "latitud", "longitud"]],on="estacion_id",how="inner",)
+  #Flujo neto y formulación de la variable objetivo
+  balance["flujo_neto"] = balance["llegadas"] - balance["salidas"]
+  umbral = 0.5 * balance["capacidad"]
+  #case: desbalance frente a su tamaño
+  balance["en_riesgo"] = ((balance["flujo_neto"].abs() >= umbral) | (balance["salidas"] >= umbral)).astype(int)
+  #para el tiempo
+  balance["hora"] = balance["ventana"].dt.hour
+  balance["dia_semana"] = balance["ventana"].dt.dayofweek
+  balance["es_fin_de_semana"] = (balance["dia_semana"] >= 5).astype(int)
+  #para el tardado del intervalo previo, evitando datadrifts
+  balance = balance.sort_values(["estacion_id", "ventana"]).reset_index(
+      drop=True
+  )
+  balance["lag_salidas"] = balance.groupby("estacion_id")["salidas"].shift(1)
+  balance["lag_llegadas"] = balance.groupby("estacion_id")["llegadas"].shift(1)
+  balance["lag_flujo_neto"] = balance.groupby("estacion_id")["flujo_neto"].shift(
+      1
+  )
+  return balance.dropna().reset_index(drop=True)
 
 def calcular_perfil_estaciones_p3(
     df_viajes: pd.DataFrame, df_estaciones: pd.DataFrame

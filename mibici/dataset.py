@@ -40,7 +40,12 @@ def asegurar_nomenclatura(output_dir: Path = EXTERNAL_DATA_DIR) -> Path:
     nomenclatura_file = output_dir / "nomenclatura_2026_09.csv"
     if not nomenclatura_file.exists():
         logger.info(f"Descargando nomenclatura desde {NOMENCLATURA_URL}...")
-        resp = requests.get(NOMENCLATURA_URL, timeout=30)
+        headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+            " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )}
+        resp = requests.get(NOMENCLATURA_URL, headers=headers, timeout=30)
         resp.raise_for_status()
         nomenclatura_file.write_bytes(resp.content)
         logger.success(f"Nomenclatura guardada en {nomenclatura_file}")
