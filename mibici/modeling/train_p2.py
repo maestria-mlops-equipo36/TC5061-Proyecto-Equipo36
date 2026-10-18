@@ -1,3 +1,20 @@
+"""
+Módulo de Entrenamiento y Evaluación para la Pregunta 2.
+
+Problema de Negocio:
+    Clasificación del riesgo operativo de desabasto o saturación en cicloestaciones 
+    de MiBici Guadalajara para la planeación del equipo de rebalanceo.
+
+Metodología:
+    1. Carga de datos procesados (viajes consolidados y catálogo de cicloestaciones).
+    2. Construcción de características contextuales y retardos históricos (lags) 
+       sin fuga temporal hacia el futuro.
+    3. Partición estrictamente cronológica (80% pasado para entrenamiento, 20% futuro para prueba).
+    4. Entrenamiento de un modelo base (DummyClassifier con estrategia mayoritaria).
+    5. Entrenamiento de un modelo candidato (LogisticRegression ponderada para desbalance de clases).
+    6. Registro reproducible de experimentos en MLflow Tracking con métricas 'test_*' y matriz de confusión.
+"""
+
 import os
 import json
 from pathlib import Path
@@ -20,6 +37,12 @@ from mibici.features import calcular_features_riesgo_p2
 
 
 def obtener_hash_datos() -> str:
+    """
+    Recupera el hash criptográfico SHA-256 del dataset consolidado desde el manifiesto.
+
+    Output:
+        str: Primeros 8 caracteres del hash SHA-256 o 'sin_hash' si no se encuentra.
+    """
     if DATA_MANIFEST_PATH.exists():
         with open(DATA_MANIFEST_PATH, "r", encoding="utf-8") as f:
             manifest = json.load(f)
@@ -28,6 +51,10 @@ def obtener_hash_datos() -> str:
 
 
 def ejecutar_experimento_p2():
+    """
+    Orquesta el flujo integral de experimentación para la Pregunta 2:
+    preparación de particiones temporales, ajuste de clasificadores y logging en MLflow.
+    """
     viajes_path = PROCESSED_DATA_DIR / "viajes_limpios.parquet"
     estaciones_path = PROCESSED_DATA_DIR / "estaciones.parquet"
 
