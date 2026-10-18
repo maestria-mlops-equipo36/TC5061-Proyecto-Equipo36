@@ -27,6 +27,17 @@ MODELS_DIR = PROJ_ROOT / "models"
 REPORTS_DIR = PROJ_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
 
+# Configuración del proyecto y experimentos
+RANDOM_SEED = 42
+DEFAULT_START_DATE = "2025-10"
+DEFAULT_END_DATE = "2026-09"
+NOMENCLATURA_PATH = EXTERNAL_DATA_DIR / "nomenclatura_2026_09.csv"
+DATA_MANIFEST_PATH = DATA_DIR / "data_manifest.json"
+
+# MLFlow Tracking
+MLFLOW_EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT_NAME", "mibici-equipo36")
+TEAM_NAME = "Equipo36"
+
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135
 try:
