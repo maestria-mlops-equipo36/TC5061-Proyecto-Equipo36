@@ -31,11 +31,11 @@ Si el equipo utiliza OneDrive, solicitar a otro integrante el acceso a la carpet
 En una terminal de Windows (CMD, PowerShell) o macOS:
 
 ```bash
-git clone https://github.com/maestria-mlops-equipo36/mibici-data-science.git
-cd mibici-data-science
+git clone https://github.com/maestria-mlops-equipo36/TC5061-Proyecto-Equipo36.git
+cd TC5061-Proyecto-Equipo36
 ```
 
-Se recomienda utilizar una versión de Python compatible con las dependencias del proyecto. La configuración inicial del proyecto se realizó con Python **3.14.4**; la compatibilidad de todas las dependencias debe comprobarse en cada entorno.
+Se recomienda utilizar una versión de Python compatible con las dependencias del proyecto. Los experimentos documentados se ejecutaron con **Python 3.12** en el entorno local `.venv312` y MLflow 3.17.1. Se recomienda Python 3.12 y verificar las versiones efectivas de `requirements.txt` antes de reproducir las corridas.
 
 ## 3. Crear el entorno virtual e instalar dependencias
 
@@ -128,33 +128,145 @@ python -m mibici.features
 Genera:
 - `data/processed/features_p3_estaciones.parquet`
 
-### 5.5 Experimentos en MLFlow Tracking (Pregunta 3)
+### 5.5 Servidor de MLflow y entorno de ejecución
 
-Ejecuta el pipeline de modelado y clustering registrando parámetros, métricas (`silhouette_score`, `davies_bouldin_score`, `calinski_harabasz_score`), etiquetas de Git y artefactos visuales en MLFlow:
+Los tres problemas comparten el experimento de tracking **`mibici-equipo36`**. El servidor utilizado durante las pruebas estuvo disponible en `http://127.0.0.1:5000`, con base SQLite y artefactos locales gestionados fuera del repositorio. **Los runs no se suben automáticamente a GitHub**.
 
-```bash
-# Baseline: KMeans con k=3
-python -m mibici.modeling.train --modelo-tipo kmeans --n-clusters 3
-
-# Modelo candidato: KMeans con k=4
-python -m mibici.modeling.train --modelo-tipo kmeans --n-clusters 4
-
-# Modelo alternativo: Gaussian Mixture Models (GMM)
-python -m mibici.modeling.train --modelo-tipo gmm --n-clusters 4
-```
-
-Para visualizar la interfaz de MLFlow y consultar los runs:
+En macOS, desde la raíz del proyecto, con el entorno `.venv312` ya creado e instaladas las dependencias:
 
 ```bash
-mlflow ui
+.venv312/bin/python -m pip show mlflow
+export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 ```
 
-Acceder desde el navegador a `http://127.0.0.1:5000`.
+Iniciar por separado el servidor de MLflow configurado para el curso. Si se usa un servidor propio, asegurar que backend store y artefactos estén configurados de forma persistente; ejecutar simplemente `mlflow ui` podría abrir un almacén diferente del utilizado por las corridas.
+
+### 5.6 P1 — Regresión: viajes por estación y día
+
+**Pregunta:** ¿Cuántos viajes se iniciarán en una estación o zona en un periodo futuro?
+
+El objetivo es predecir la demanda diaria por estación, usando características históricas y división temporal. Se comparan un modelo de referencia y Random Forest.
+
+```bash
+# Referencia
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 env -u PYTHONPATH \
+  .venv312/bin/python -m mibici.modeling.train \
+  p1-regresion --modelo-tipo baseline
+
+# Candidato
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 env -u PYTHONPATH \
+  .venv312/bin/python -m mibici.modeling.train \
+  p1-regresion --modelo-tipo random_forest
+```
+
+**Evidencia observada:** `P1_baseline` y `P1_random_forest` aparecen en la interfaz de MLflow. El baseline obtuvo MAE=6.5527 y RMSE=10.7318 en validación, y MAE=8.5673 y RMSE=14.7710 en prueba. Las figuras del candidato muestran reales frente a predichos, importancia de características y distribución de errores. Los valores numéricos del candidato deben consultarse en su run antes de afirmar una mejora cuantitativa.
+
+### 5.7 P2 — Clasificación: riesgo en estación
+
+**Pregunta:** ¿Una estación estará en riesgo de quedarse sin bicicletas o sin anclajes disponibles en un periodo futuro?
+
+Se ejecutan `DummyClassifier` como referencia y `LogisticRegression` como candidato. La interpretación operativa depende de cómo se definió la etiqueta de riesgo (real o proxy).
+
+```bash
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 env -u PYTHONPATH \
+  .venv312/bin/python -m mibici.modeling.train_p2
+```
+
+**Evidencia observada:** runs `P2_Baseline_DummyClassifier` y `P2_Candidato_LogisticRegression`; candidato con F1 macro≈0.6910 y ROC AUC≈0.8652 en la ejecución mostrada. La matriz de confusión adjunta registra VN=126615, FP=26691, FN=5527 y VP=16262. Se generan una curva ROC y una matriz de confusión. Para reproducibilidad se debe comprobar que el código, la etiqueta y los datos coincidan con la versión evaluada.
+
+### 5.8 P3 — Clustering: perfiles de estaciones
+
+**Pregunta:** ¿Qué grupos de estaciones comparten patrones de uso y dónde se ubican en la ciudad?
+
+Las características por estación se obtienen con:
+
+```bash
+env -u PYTHONPATH .venv312/bin/python -m mibici.features
+```
+
+Modelos comparados:
+
+```bash
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 env -u PYTHONPATH \
+  .venv312/bin/python -m mibici.modeling.train --modelo-tipo kmeans --n-clusters 3
+
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 env -u PYTHONPATH \
+  .venv312/bin/python -m mibici.modeling.train --modelo-tipo kmeans --n-clusters 4
+
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 env -u PYTHONPATH \
+  .venv312/bin/python -m mibici.modeling.train --modelo-tipo gmm --n-clusters 4
+```
+
+Se comparan perfiles y mapas de clusters; los indicadores internos incluyen silhouette, Davies-Bouldin y Calinski-Harabasz. La ejecución GMM debe verificarse en la lista de runs de la instancia usada.
+
+#### 5.8.1 Referencia adicional por reglas de intensidad
+
+Se incorpora una referencia sencilla que agrupa las estaciones según
+`viajes_diarios_por_anclaje`:
+
+- Uso bajo: valores menores o iguales al percentil 33.
+- Uso medio: valores mayores al percentil 33 y menores o iguales al percentil 67.
+- Uso alto: valores mayores al percentil 67.
+
+Los umbrales se calculan a partir de las estaciones del archivo de entrada.
+Esta referencia complementa el análisis; K-Means con k=3 se mantiene como
+baseline oficial del proyecto.
+
+##### Ejecución
+
+Con el entorno del proyecto activo y desde la raíz del repositorio:
+
+```bash
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 env -u PYTHONPATH \
+  .venv312/bin/python -m mibici.modeling.baseline_reglas
+```
+
+Se requiere el archivo `data/processed/features_p3_estaciones.parquet`,
+generado mediante `.venv312/bin/python -m mibici.features` después de la ingesta.
+
+##### Evaluación y registro
+
+Las agrupaciones se evalúan sobre las mismas siete características
+estandarizadas utilizadas por la configuración espacial de K-Means:
+flujo neto, salidas en pico matutino, salidas en pico vespertino, salidas
+en fin de semana, viajes diarios por anclaje, latitud y longitud.
+
+Se registra la ejecución `P3_reglas_intensidad_k3_espacial` en el experimento
+de MLflow configurado para el proyecto. Se guardan los umbrales, las
+métricas, el número de estaciones por grupo y dos artefactos:
+`estaciones_niveles.csv` y `metricas.json`.
+
+##### Resultados observados
+
+La referencia por reglas produjo 160 estaciones de uso bajo, 164 de uso
+medio y 160 de uso alto. Los umbrales fueron aproximadamente 0.9913 y
+3.3040 viajes diarios por anclaje.
+
+| Métrica | Referencia por reglas | K-Means k=3 |
+|---|---:|---:|
+| Silhouette — mayor es mejor | 0.0592 | 0.2323 |
+| Davies-Bouldin — menor es mejor | 4.5544 | 1.3457 |
+| Calinski-Harabasz — mayor es mejor | 32.27 | 117.79 |
+
+Los valores de K-Means corresponden a la ejecución previamente validada.
+La comparación requiere utilizar el mismo conjunto de estaciones y las
+mismas características y transformación.
+
+K-Means obtiene mejores métricas internas que la regla de intensidad.
+Estas métricas describen la estructura de los grupos, pero no demuestran
+por sí solas su utilidad operativa. Los percentiles tampoco garantizan
+grupos de igual tamaño cuando existen valores repetidos.
+
+### 5.9 Verificación de runs y evidencias para evaluación
+
+En MLflow abrir el experimento `mibici-equipo36` y comprobar al menos un run **por cada P1, P2 y P3**. Para cada run verificar: parámetros, métricas, etiquetas, artefactos y origen del código. Capturar cuatro evidencias legibles: (1) lista de runs con los tres problemas; (2) parámetros y etiquetas; (3) métricas; (4) artefactos y modelo, cuando aplique. Una captura de terminal demuestra ejecución, pero no sustituye las pestañas de MLflow.
+
+> **Importante:** las instrucciones reflejan ejecuciones compartidas por el equipo, pero la presencia actual de cada script y run en `main` debe verificarse en GitHub. Los archivos ignorados (datos, modelos, credenciales y tracking) no deben agregarse para aparentar que están versionados.
 
 ## 6. Organización del proyecto
 
 ```text
-mibici-data-science/
+TC5061-Proyecto-Equipo36/
 ├── data/
 │   ├── external/         # Datos externos
 │   ├── interim/          # Reportes y resultados intermedios (ignorados por Git)
@@ -216,67 +328,9 @@ git pull origin main
 
 ## 8. Alcance actual y siguientes pasos
 
-**Implementado:** estructura Cookiecutter, inventario mensual y validación de encabezados de los CSV.
+**Implementado y ejecutado localmente:** estructura Cookiecutter Data Science, validación e ingesta de datos, ingeniería de características, P1 (baseline y Random Forest), P2 (DummyClassifier y LogisticRegression), P3 (K-Means k=3/k=4, GMM k=4 y referencia por reglas), con evidencias de tracking en MLflow.
 
-**Pendiente:** validación de calidad a nivel de registros, preparación de datos, análisis exploratorio, desarrollo de modelos y seguimiento de experimentos, según avance el proyecto integrador.
-
-## P3: referencia adicional por reglas de intensidad
-
-Se incorpora una referencia sencilla que agrupa las estaciones según
-`viajes_diarios_por_anclaje`:
-
-- Uso bajo: valores menores o iguales al percentil 33.
-- Uso medio: valores mayores al percentil 33 y menores o iguales al percentil 67.
-- Uso alto: valores mayores al percentil 67.
-
-Los umbrales se calculan a partir de las estaciones del archivo de entrada.
-Esta referencia complementa el análisis; K-Means con k=3 se mantiene como
-baseline oficial del proyecto.
-
-### Ejecución
-
-Con el entorno del proyecto activo y desde la raíz del repositorio:
-
-```bash
-env -u PYTHONPATH python -m mibici.modeling.baseline_reglas
-```
-
-Se requiere el archivo `data/processed/features_p3_estaciones.parquet`,
-generado mediante `python -m mibici.features` después de la ingesta.
-
-### Evaluación y registro
-
-Las agrupaciones se evalúan sobre las mismas siete características
-estandarizadas utilizadas por la configuración espacial de K-Means:
-flujo neto, salidas en pico matutino, salidas en pico vespertino, salidas
-en fin de semana, viajes diarios por anclaje, latitud y longitud.
-
-Se registra la ejecución `P3_reglas_intensidad_k3_espacial` en el experimento
-de MLflow configurado para el proyecto. Se guardan los umbrales, las
-métricas, el número de estaciones por grupo y dos artefactos:
-`estaciones_niveles.csv` y `metricas.json`.
-
-### Resultados observados
-
-La referencia por reglas produjo 160 estaciones de uso bajo, 164 de uso
-medio y 160 de uso alto. Los umbrales fueron aproximadamente 0.9913 y
-3.3040 viajes diarios por anclaje.
-
-| Métrica | Referencia por reglas | K-Means k=3 |
-|---|---:|---:|
-| Silhouette — mayor es mejor | 0.0592 | 0.2323 |
-| Davies-Bouldin — menor es mejor | 4.5544 | 1.3457 |
-| Calinski-Harabasz — mayor es mejor | 32.27 | 117.79 |
-
-Los valores de K-Means corresponden a la ejecución previamente validada.
-La comparación requiere utilizar el mismo conjunto de estaciones y las
-mismas características y transformación.
-
-K-Means obtiene mejores métricas internas que la regla de intensidad.
-Estas métricas describen la estructura de los grupos, pero no demuestran
-por sí solas su utilidad operativa. Los percentiles tampoco garantizan
-grupos de igual tamaño cuando existen valores repetidos.
-
+**Pendiente de comprobar antes de entrega:** que todos los scripts y cambios estén integrados en `main`; que los runs correspondientes incluyan parámetros, métricas, etiquetas y artefactos; y que la documentación y dependencias coincidan con el código de la versión entregada.
 
 ## 9. Licencia
 
