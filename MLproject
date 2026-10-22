@@ -1,0 +1,24 @@
+name: mibici-equipo36
+
+python_env: python_env.yaml
+
+entry_points:
+  ingest:
+    parameters:
+      start_date: {type: str, default: "2025-10"}
+      end_date: {type: str, default: "2026-09"}
+    command: >
+      python -m mibici.dataset
+      --start-date {start_date}
+      --end-date {end_date}
+
+  train:
+    parameters:
+      question: {type: str, default: "p1"}
+      model: {type: str, default: "rf"}
+      n_estimators: {type: int, default: 100}
+    command: >
+      python -m mibici.modeling.run_project
+      --question {question}
+      --model {model}
+      --n-estimators {n_estimators}

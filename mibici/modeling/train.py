@@ -199,13 +199,15 @@ def p3_clustering(
 
         logger.success(f"Run de MLFlow finalizado exitosamente: {run_name}")
 
-
 @app.command()
 def p1_regresion(
     viajes_path: Path = PROCESSED_DATA_DIR / "viajes_limpios.parquet",
     cobertura_minima: float = 0.95,
     modelo_tipo: str = "baseline",
-):
+    n_estimators: int = 100,
+    max_depth: int = 12,
+    min_samples_leaf: int = 5,
+):    
     """
     Ejecuta los modelos de regresión para la Pregunta 1 (P1).
 
@@ -299,11 +301,11 @@ def p1_regresion(
             f"Entrenando Random Forest: árboles=100, "
             f"profundidad=12, min_samples_leaf=5."
         )
-
+        
         model = RandomForestRegressor(
-            n_estimators=100,
-            max_depth=12,
-            min_samples_leaf=5,
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            min_samples_leaf=min_samples_leaf,
             random_state=RANDOM_SEED,
             n_jobs=-1,
         )
@@ -354,9 +356,9 @@ def p1_regresion(
             mlflow.log_param("baseline_lag_dias", 7)
 
         elif modelo_tipo == "random_forest":
-            mlflow.log_param("n_estimators", 100)
-            mlflow.log_param("max_depth", 12)
-            mlflow.log_param("min_samples_leaf", 5)
+            mlflow.log_param("n_estimators", n_estimators)
+            mlflow.log_param("max_depth", max_depth)
+            mlflow.log_param("min_samples_leaf", min_samples_leaf)
             mlflow.log_param("random_seed", RANDOM_SEED)
         mlflow.log_param("cobertura_minima", cobertura_minima)
         mlflow.log_param("data_version", data_version)
