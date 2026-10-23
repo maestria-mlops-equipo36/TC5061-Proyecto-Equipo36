@@ -1,3 +1,4 @@
+import os
 import json
 import subprocess
 from pathlib import Path
@@ -339,8 +340,10 @@ def p1_regresion(
 
     run_name = f"P1_{modelo_tipo}"
 
-    with mlflow.start_run(run_name=run_name):
-
+    with mlflow.start_run(
+        run_id=os.getenv("MLFLOW_RUN_ID"),
+        run_name=run_name,
+    ):
         # a) Etiquetas
         mlflow.set_tag("equipo", TEAM_NAME)
         mlflow.set_tag("pregunta", "P1")
