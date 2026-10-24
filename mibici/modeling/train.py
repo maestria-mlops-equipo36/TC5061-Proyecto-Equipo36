@@ -1,3 +1,4 @@
+import os
 import json
 import subprocess
 from pathlib import Path
@@ -18,7 +19,12 @@ from sklearn.metrics import (
     silhouette_score,
 )
 from sklearn.mixture import GaussianMixture
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from contextlib import nullcontext
+from tempfile import TemporaryDirectory
+from mlflow.models import infer_signature
+
 import typer
 
 from mibici.config import (
@@ -26,6 +32,12 @@ from mibici.config import (
     FIGURES_DIR,
     MLFLOW_EXPERIMENT_NAME,
     MODELS_DIR,
+    P3_DEFAULT_COVARIANCE_TYPE,
+    P3_DEFAULT_INCLUIR_ESPACIAL,
+    P3_DEFAULT_MODEL,
+    P3_DEFAULT_N_CLUSTERS,
+    P3_FEATURE_COLS_BASE,
+    P3_FEATURES_PATH,
     PROCESSED_DATA_DIR,
     RANDOM_SEED,
     TEAM_NAME,
@@ -34,6 +46,10 @@ from mibici.features import (
     calcular_demanda_diaria_p1,
     preparar_demanda_diaria_p1,
     generar_caracteristicas_regresion_p1,
+)
+from mibici.modeling.baseline_reglas import (
+    asegurar_features_p3,
+    ejecutar_baseline_reglas_p3,
 )
 from mibici.plots import (
     graficar_clusters_mapa,
@@ -69,36 +85,43 @@ def cargar_manifest_version() -> str:
 
 @app.command()
 def p3_clustering(
-    features_path: Path = PROCESSED_DATA_DIR / "features_p3_estaciones.parquet",
-    modelo_tipo: str = "kmeans",
-    n_clusters: int = 4,
+    features_path: Path = P3_FEATURES_PATH,
+    modelo_tipo: str = P3_DEFAULT_MODEL,
+    n_clusters: int = P3_DEFAULT_N_CLUSTERS,
+    covariance_type: str = P3_DEFAULT_COVARIANCE_TYPE,
     random_seed: int = RANDOM_SEED,
-    incluir_espacial: bool = True,
+    incluir_espacial: bool = P3_DEFAULT_INCLUIR_ESPACIAL,
+    stage_of_work: Optional[str] = None,
 ):
     """
     Ejecuta el experimento de clustering para la Pregunta 3 (P3) y lo registra en MLFlow Tracking.
     """
-    logger.info(f"Iniciando experimento P3: modelo={modelo_tipo}, clusters={n_clusters}, semilla={random_seed}")
-    
-    if not features_path.exists():
-        logger.error(f"No existe la matriz de características en {features_path}. Ejecuta features.py primero.")
+    if modelo_tipo in ("baseline", "reglas", "reglas_intensidad"):
+        return ejecutar_baseline_reglas_p3(
+            features_path=features_path,
+            stage_of_work=stage_of_work or "baseline",
+        )
+
+    logger.info(
+        f"Iniciando experimento P3: modelo={modelo_tipo}, clusters={n_clusters}, "
+        f"covariance_type={covariance_type}, semilla={random_seed}"
+    )
+
+    try:
+        features_path = asegurar_features_p3(features_path)
+    except FileNotFoundError as exc:
+        logger.error(str(exc))
         raise typer.Exit(code=1)
 
     df_features = pd.read_parquet(features_path)
     logger.info(f"Cargadas {len(df_features)} estaciones.")
 
     # Definir variables utilizadas para el perfilamiento
-    feature_cols = [
-        "ratio_flujo_neto",
-        "pct_salidas_pico_matutino",
-        "pct_salidas_pico_vespertino",
-        "pct_salidas_fin_de_semana",
-        "viajes_diarios_por_anclaje",
-    ]
+    feature_cols = list(P3_FEATURE_COLS_BASE)
     if incluir_espacial:
         feature_cols.extend(["latitud", "longitud"])
 
-    X = df_features[feature_cols].copy()
+    X = df_features[feature_cols].astype(float).copy()
 
     # Preprocesamiento: Escalado estándar
     scaler = StandardScaler()
@@ -109,26 +132,66 @@ def p3_clustering(
     git_commit = obtener_git_commit()
     data_version = cargar_manifest_version()
 
-    run_name = f"P3_{modelo_tipo}_k{n_clusters}_{'espacial' if incluir_espacial else 'temporal'}"
+    sufijo_espacial = "espacial" if incluir_espacial else "temporal"
+    if modelo_tipo == "gmm" and covariance_type != "full":
+        run_name = f"P3_{modelo_tipo}_{covariance_type}_k{n_clusters}_{sufijo_espacial}"
+    else:
+        run_name = f"P3_{modelo_tipo}_k{n_clusters}_{sufijo_espacial}"
 
-    with mlflow.start_run(run_name=run_name):
+    if stage_of_work is None:
+        if modelo_tipo == "kmeans" and n_clusters == 3 and incluir_espacial:
+            etapa = "baseline"
+        else:
+            etapa = "candidate"
+    else:
+        etapa = stage_of_work
+
+    run_activo = mlflow.active_run()
+    if run_activo is not None:
+        contexto_run = nullcontext(run_activo)
+    else:
+        env_run_id = os.environ.pop("MLFLOW_RUN_ID", None)
+        contexto_run = mlflow.start_run(
+            run_id=env_run_id,
+            run_name=run_name,
+        )
+
+    with contexto_run:
         # 1. Registrar Etiquetas (Tags)
-        mlflow.set_tag("equipo", TEAM_NAME)
-        mlflow.set_tag("pregunta", "P3")
-        mlflow.set_tag("tarea", "clustering")
-        mlflow.set_tag("git_commit", git_commit)
-        mlflow.set_tag("modelo_familia", modelo_tipo)
+        mlflow.set_tags({
+            "mlflow.runName": run_name,
+            "equipo": TEAM_NAME,
+            "pregunta": "P3",
+            "question": "p3",
+            "tarea": "clustering",
+            "git_commit": git_commit,
+            "commit": git_commit,
+            "modelo_familia": modelo_tipo,
+            "model_family": modelo_tipo,
+            "stage_of_work": etapa,
+            "data_version": data_version,
+        })
 
         # 2. Registrar Parámetros (Params)
-        mlflow.log_param("modelo_tipo", modelo_tipo)
-        mlflow.log_param("n_clusters", n_clusters)
-        mlflow.log_param("random_seed", random_seed)
-        mlflow.log_param("data_version", data_version)
-        mlflow.log_param("incluir_espacial", incluir_espacial)
-        mlflow.log_param("features_list", ",".join(feature_cols))
-        mlflow.log_param("n_estaciones", len(df_features))
+        params_corrida = {
+            "modelo_tipo": modelo_tipo,
+            "n_clusters": n_clusters,
+            "random_seed": random_seed,
+            "data_version": data_version,
+            "incluir_espacial": incluir_espacial,
+            "features_list": ",".join(feature_cols),
+            "n_estaciones": len(df_features),
+        }
+        if modelo_tipo == "gmm":
+            params_corrida["covariance_type"] = covariance_type
 
-        # 3. Ajuste del Modelo
+        for k_param, v_param in params_corrida.items():
+            try:
+                mlflow.log_param(k_param, v_param)
+            except Exception:
+                pass
+
+        # 3. Ajuste del Modelo y Pipeline (Scaler + Modelo)
         if modelo_tipo == "kmeans":
             model = KMeans(
                 n_clusters=n_clusters,
@@ -136,18 +199,22 @@ def p3_clustering(
                 n_init=10,
                 max_iter=300,
             )
-            labels = model.fit_predict(X_scaled)
-            mlflow.log_metric("inertia", float(model.inertia_))
+            pipeline = Pipeline([("scaler", StandardScaler()), ("model", model)])
+            labels = pipeline.fit_predict(X)
+            mlflow.log_metric("inertia", float(pipeline.named_steps["model"].inertia_))
         elif modelo_tipo == "gmm":
             model = GaussianMixture(
                 n_components=n_clusters,
                 random_state=random_seed,
-                covariance_type="full",
+                covariance_type=covariance_type,
             )
-            model.fit(X_scaled)
-            labels = model.predict(X_scaled)
-            mlflow.log_metric("bic", float(model.bic(X_scaled)))
-            mlflow.log_metric("aic", float(model.aic(X_scaled)))
+            pipeline = Pipeline([("scaler", StandardScaler()), ("model", model)])
+            pipeline.fit(X)
+            labels = pipeline.predict(X)
+            gmm_fitted = pipeline.named_steps["model"]
+            X_scaled_pipe = pipeline.named_steps["scaler"].transform(X)
+            mlflow.log_metric("bic", float(gmm_fitted.bic(X_scaled_pipe)))
+            mlflow.log_metric("aic", float(gmm_fitted.aic(X_scaled_pipe)))
         else:
             raise ValueError(f"Tipo de modelo no soportado: {modelo_tipo}")
 
@@ -160,13 +227,37 @@ def p3_clustering(
         mlflow.log_metric("davies_bouldin_score", db_score)
         mlflow.log_metric("calinski_harabasz_score", ch_score)
 
-        logger.info(f"Resultados de Métricas: Silhouette={sil_score:.4f}, Davies-Bouldin={db_score:.4f}, Calinski-Harabasz={ch_score:.2f}")
+        tamanos_grupos = {}
+        for grupo in range(n_clusters):
+            conteo = int((labels == grupo).sum())
+            tamanos_grupos[f"n_estaciones_grupo_{grupo}"] = conteo
+            mlflow.log_metric(f"n_estaciones_grupo_{grupo}", conteo)
 
-        # 5. Generar y Registrar Artefactos
+        mlflow.log_metric("min_cluster_size", int(min(tamanos_grupos.values())))
+        mlflow.log_metric("max_cluster_size", int(max(tamanos_grupos.values())))
+
+        logger.info(
+            f"Resultados de Métricas: Silhouette={sil_score:.4f}, "
+            f"Davies-Bouldin={db_score:.4f}, Calinski-Harabasz={ch_score:.2f}"
+        )
+
+        # 5. Generar y Registrar Artefactos (Punto 5 de la entrega)
+        # a) Registrar dataset de entrenamiento con mlflow.log_input
+        try:
+            dataset_input = mlflow.data.from_pandas(
+                df_features,
+                source=str(features_path),
+                name="features_p3_estaciones",
+            )
+            mlflow.log_input(dataset_input, context="training")
+        except Exception as exc:
+            logger.warning(f"No se pudo registrar mlflow.log_input: {exc}")
+
         df_eval = df_features.copy()
         df_eval["cluster"] = labels
 
-        # a) Gráfica geográfica
+        FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+        # b) Gráfica geográfica
         mapa_path = FIGURES_DIR / f"{run_name}_mapa.png"
         graficar_clusters_mapa(
             df_eval,
@@ -174,9 +265,10 @@ def p3_clustering(
             output_path=mapa_path,
             titulo=f"Distribución de Clusters ({modelo_tipo.upper()}, k={n_clusters})",
         )
+        mlflow.log_artifact(str(mapa_path), artifact_path="plots")
         mlflow.log_artifact(str(mapa_path), artifact_path="figures")
 
-        # b) Gráfica de perfil
+        # c) Gráfica de perfil
         perfil_path = FIGURES_DIR / f"{run_name}_perfil.png"
         graficar_perfil_clusters(
             df_eval,
@@ -185,26 +277,70 @@ def p3_clustering(
             output_path=perfil_path,
             titulo=f"Perfil de Comportamiento ({modelo_tipo.upper()}, k={n_clusters})",
         )
+        mlflow.log_artifact(str(perfil_path), artifact_path="plots")
         mlflow.log_artifact(str(perfil_path), artifact_path="figures")
 
-        # c) Tabla de asignación de estaciones
+        # d) Tabla de asignación de estaciones y manifiesto de versión de datos
         clusters_csv_path = PROCESSED_DATA_DIR / f"{run_name}_estaciones_clusters.csv"
         df_eval.to_csv(clusters_csv_path, index=False)
         mlflow.log_artifact(str(clusters_csv_path), artifact_path="data")
+        if DATA_MANIFEST_PATH.exists():
+            mlflow.log_artifact(str(DATA_MANIFEST_PATH), artifact_path="data")
 
-        # d) Guardar modelo serializado localmente (ignorado por Git)
+        # e) Archivo de configuración de la corrida en subcarpeta config/
+        with TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / f"{run_name}_config.json"
+            config_payload = {
+                "run_name": run_name,
+                "stage_of_work": etapa,
+                "git_commit": git_commit,
+                "params": params_corrida,
+                "metrics": {
+                    "silhouette_score": sil_score,
+                    "davies_bouldin_score": db_score,
+                    "calinski_harabasz_score": ch_score,
+                    **tamanos_grupos,
+                },
+            }
+            config_path.write_text(
+                json.dumps(config_payload, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            mlflow.log_artifact(str(config_path), artifact_path="config")
+
+        # f) Registrar el modelo nativo en MLflow con firma (signature) e input_example
+        input_example = X.iloc[:5].copy()
+        signature = infer_signature(X, labels)
+        mlflow.sklearn.log_model(
+            sk_model=pipeline,
+            artifact_path="model",
+            signature=signature,
+            input_example=input_example,
+        )
+
+        # g) Guardar modelo serializado localmente (ignorado por Git)
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
         model_file = MODELS_DIR / f"{run_name}.joblib"
-        joblib.dump({"model": model, "scaler": scaler, "feature_cols": feature_cols}, model_file)
+        joblib.dump(
+            {
+                "pipeline": pipeline,
+                "model": pipeline.named_steps["model"],
+                "scaler": pipeline.named_steps["scaler"],
+                "feature_cols": feature_cols,
+            },
+            model_file,
+        )
 
         logger.success(f"Run de MLFlow finalizado exitosamente: {run_name}")
-
 
 @app.command()
 def p1_regresion(
     viajes_path: Path = PROCESSED_DATA_DIR / "viajes_limpios.parquet",
     cobertura_minima: float = 0.95,
     modelo_tipo: str = "baseline",
+    n_estimators: int = 100,
+    max_depth: int = 12,
+    min_samples_leaf: int = 5,
 ):
     """
     Ejecuta los modelos de regresión para la Pregunta 1 (P1).
@@ -296,14 +432,14 @@ def p1_regresion(
 
     elif modelo_tipo == "random_forest":
         logger.info(
-            f"Entrenando Random Forest: árboles=100, "
-            f"profundidad=12, min_samples_leaf=5."
+            f"Entrenando Random Forest: árboles={n_estimators}, "
+            f"profundidad={max_depth}, "
+            f"min_samples_leaf={min_samples_leaf}."
         )
-
         model = RandomForestRegressor(
-            n_estimators=100,
-            max_depth=12,
-            min_samples_leaf=5,
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            min_samples_leaf=min_samples_leaf,
             random_state=RANDOM_SEED,
             n_jobs=-1,
         )
@@ -337,8 +473,17 @@ def p1_regresion(
 
     run_name = f"P1_{modelo_tipo}"
 
-    with mlflow.start_run(run_name=run_name):
+    run_activo = mlflow.active_run()
 
+    if run_activo is not None:
+        contexto_run = nullcontext(run_activo)
+    else:
+        contexto_run = mlflow.start_run(
+            run_id=os.getenv("MLFLOW_RUN_ID"),
+            run_name=run_name,
+        )
+
+    with contexto_run:
         # a) Etiquetas
         mlflow.set_tag("equipo", TEAM_NAME)
         mlflow.set_tag("pregunta", "P1")
@@ -354,9 +499,9 @@ def p1_regresion(
             mlflow.log_param("baseline_lag_dias", 7)
 
         elif modelo_tipo == "random_forest":
-            mlflow.log_param("n_estimators", 100)
-            mlflow.log_param("max_depth", 12)
-            mlflow.log_param("min_samples_leaf", 5)
+            mlflow.log_param("n_estimators", n_estimators)
+            mlflow.log_param("max_depth", max_depth)
+            mlflow.log_param("min_samples_leaf", min_samples_leaf)
             mlflow.log_param("random_seed", RANDOM_SEED)
         mlflow.log_param("cobertura_minima", cobertura_minima)
         mlflow.log_param("data_version", data_version)
