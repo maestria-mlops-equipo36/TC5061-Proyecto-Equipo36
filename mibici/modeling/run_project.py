@@ -14,6 +14,8 @@ def main():
 
     parser.add_argument("--model", required=True)
     parser.add_argument("--n-estimators", type=int, default=100)
+    parser.add_argument("--max-depth", type=int, default=12)
+    parser.add_argument("--min-samples-leaf", type=int, default=5)
 
     args = parser.parse_args()
 
@@ -35,6 +37,8 @@ def main():
         p1_regresion(
             modelo_tipo=modelo_tipo,
             n_estimators=args.n_estimators,
+            max_depth=args.max_depth,
+            min_samples_leaf=args.min_samples_leaf,
         )
 
     else:

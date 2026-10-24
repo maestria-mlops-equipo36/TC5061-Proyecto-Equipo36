@@ -17,8 +17,12 @@ entry_points:
       question: {type: str, default: "p1"}
       model: {type: str, default: "rf"}
       n_estimators: {type: int, default: 100}
+      max_depth: {type: int, default: 12}
+      min_samples_leaf: {type: int, default: 5}
     command: >
       python -m mibici.modeling.run_project
       --question {question}
       --model {model}
       --n-estimators {n_estimators}
+      --max-depth {max_depth}
+      --min-samples-leaf {min_samples_leaf}

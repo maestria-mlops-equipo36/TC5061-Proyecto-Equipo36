@@ -20,6 +20,8 @@ from sklearn.metrics import (
 )
 from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
+from contextlib import nullcontext
+
 import typer
 
 from mibici.config import (
@@ -80,7 +82,7 @@ def p3_clustering(
     Ejecuta el experimento de clustering para la Pregunta 3 (P3) y lo registra en MLFlow Tracking.
     """
     logger.info(f"Iniciando experimento P3: modelo={modelo_tipo}, clusters={n_clusters}, semilla={random_seed}")
-    
+
     if not features_path.exists():
         logger.error(f"No existe la matriz de características en {features_path}. Ejecuta features.py primero.")
         raise typer.Exit(code=1)
@@ -208,7 +210,7 @@ def p1_regresion(
     n_estimators: int = 100,
     max_depth: int = 12,
     min_samples_leaf: int = 5,
-):    
+):
     """
     Ejecuta los modelos de regresión para la Pregunta 1 (P1).
 
@@ -299,10 +301,10 @@ def p1_regresion(
 
     elif modelo_tipo == "random_forest":
         logger.info(
-            f"Entrenando Random Forest: árboles=100, "
-            f"profundidad=12, min_samples_leaf=5."
+            f"Entrenando Random Forest: árboles={n_estimators}, "
+            f"profundidad={max_depth}, "
+            f"min_samples_leaf={min_samples_leaf}."
         )
-        
         model = RandomForestRegressor(
             n_estimators=n_estimators,
             max_depth=max_depth,
@@ -340,10 +342,17 @@ def p1_regresion(
 
     run_name = f"P1_{modelo_tipo}"
 
-    with mlflow.start_run(
-        run_id=os.getenv("MLFLOW_RUN_ID"),
-        run_name=run_name,
-    ):
+    run_activo = mlflow.active_run()
+
+    if run_activo is not None:
+        contexto_run = nullcontext(run_activo)
+    else:
+        contexto_run = mlflow.start_run(
+            run_id=os.getenv("MLFLOW_RUN_ID"),
+            run_name=run_name,
+        )
+
+    with contexto_run:
         # a) Etiquetas
         mlflow.set_tag("equipo", TEAM_NAME)
         mlflow.set_tag("pregunta", "P1")

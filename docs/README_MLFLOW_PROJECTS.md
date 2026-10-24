@@ -1,10 +1,10 @@
 # Guía de ejecución de MLflow Projects — MiBici Equipo 36
 
-**Estado:** implementación inicial funcional para P1 (regresión).  
-**Fecha de corte:** 23 de octubre de 2026.  
+**Estado:** P1 y búsqueda de hiperparámetros con MLflow implementados; selección desde corridas existentes validada.  
+**Fecha de corte:** 24 de octubre de 2026.  
 **Repositorio:** [maestria-mlops-equipo36/TC5061-Proyecto-Equipo36](https://github.com/maestria-mlops-equipo36/TC5061-Proyecto-Equipo36)  
 **Rama de trabajo:** `feat/mlflow-project`  
-**Último commit verificado al redactar:** `0aecd6e`.
+**Último commit previamente documentado:** `0aecd6e`. Cambios recientes pendientes de commit.
 
 > **Alcance de la validación:** el entrenamiento P1 con Random Forest y 100 árboles se ejecutó correctamente con `--env-manager local` y un servidor MLflow accesible en `http://127.0.0.1:5000`. La creación automática del entorno desde `python_env.yaml`, la ejecución de ingesta mediante MLflow Projects y la integración de P2/P3 aún requieren pruebas adicionales.
 
@@ -25,6 +25,7 @@ Actualmente **solo P1 está conectado al entry point `train`**. P2 y P3 conserva
 | `MLproject` | Define el proyecto y los entry points `ingest` y `train`. |
 | `python_env.yaml` | Declara Python y las dependencias que MLflow debe utilizar al construir un entorno; su reconstrucción automática todavía no se ha validado. |
 | `mibici/modeling/run_project.py` | Recibe `question`, `model` y `n_estimators`; actualmente despacha el entrenamiento real de P1. |
+| `mibici/modeling/search_p1.py` | Búsqueda de tres configuraciones de P1 con corridas anidadas y recuperación del ganador sin entrenamiento. |
 | `mibici/modeling/train.py` | Contiene la implementación de P1 y P3; P1 acepta hiperparámetros de Random Forest y registra métricas y artefactos. |
 | `mibici/dataset.py` | Implementa la ingesta y preparación de datos. |
 | `mibici/config.py` | Centraliza rutas y otras constantes del proyecto. |
@@ -186,7 +187,35 @@ El modelo P1 también admite los hiperparámetros `max_depth` y `min_samples_lea
 
 Estos valores son **evidencia de la ejecución realizada**, no garantías de resultados idénticos si cambian los datos, dependencias o condiciones del entorno.
 
-## 8. Consultar resultados y artefactos
+## 8. Búsqueda de hiperparámetros y selección P1
+
+El script `mibici/modeling/search_p1.py` compara Random Forest con el criterio **menor MAE de validación (`val_mae`)**. Los resultados observados durante el desarrollo fueron:
+
+| Árboles | Profundidad | Muestras mínimas por hoja | MAE validación |
+|---:|---:|---:|---:|
+| 100 | 8 | 5 | 5.1026 |
+| 100 | 12 | 5 | 5.0119 |
+| 300 | 12 | 5 | 5.0110 |
+
+Estos resultados no necesariamente pertenecen todos a la misma corrida padre. La selección recuperada del padre indicado a continuación eligió **100 árboles, profundidad 12, MAE 5.0119**. El menor MAE conocido entre las tres configuraciones es 5.0110, correspondiente a 300 árboles; no debe confundirse con la selección de ese padre específico.
+
+**Entrenar tres pruebas nuevas** (solo si hace falta repetir el experimento):
+
+```bash
+python -m mibici.modeling.search_p1 --n-trials 3
+```
+
+**Recuperar el mejor hijo de un padre existente sin entrenar:**
+
+```bash
+python -m mibici.modeling.search_p1 --reuse-parent-run-id 57a29674e7284c0cb34570bc2aa5f4a2
+```
+
+El identificador corresponde a la base local de referencia y debe sustituirse en otros entornos. El script consulta únicamente hijas terminadas de ese padre y crea una corrida `P1_MODELO_GANADOR_FINAL` con métricas de selección, *tags* de los hiperparámetros y el ID de la corrida hija elegida. **No registra un nuevo modelo en Model Registry.** Se comprobó esta recuperación sin reentrenar; no se ha vuelto a ejecutar una búsqueda completa con la última versión del script.
+
+La implementación evita intentar cambiar parámetros inmutables de una corrida existente: la configuración seleccionada se registra mediante *tags*. Se recomienda conservar las corridas históricas, incluso las fallidas, como evidencia.
+
+## 9. Consultar resultados y artefactos
 
 En la interfaz MLflow:
 
@@ -210,7 +239,7 @@ models/
 
 **Distinción importante:** el archivo `.joblib` se almacena como artefacto, pero **todavía no se ha registrado un modelo en el formato nativo de MLflow con firma y ejemplo de entrada**, ni se ha publicado en Model Registry.
 
-## 9. Ingesta desde MLflow Projects (declarada, pendiente de validación integral)
+## 10. Ingesta desde MLflow Projects (declarada, pendiente de validación integral)
 
 El archivo `MLproject` contiene el entry point `ingest` con los parámetros `start_date` y `end_date`:
 
@@ -226,9 +255,9 @@ mlflow run . \
 
 **No marcar este flujo como validado todavía.** Requiere disponer de los CSV originales, revisar la configuración de rutas y verificar la generación de los datos procesados y el manifiesto.
 
-## 10. Cambios publicados en GitHub
+## 11. Cambios publicados en GitHub
 
-Se trabaja sobre `feat/mlflow-project` para que los demás integrantes puedan revisar los avances mediante el Pull Request existente, sin fusionar prematuramente a `main`.
+Se trabaja sobre `feat/mlflow-project` para que los demás integrantes revisen los cambios mediante Pull Request hacia `main`. Comprobar en GitHub si el PR ya existe antes de crear otro.
 
 | Commit | Cambio principal |
 |---|---|
@@ -245,22 +274,22 @@ git pull --ff-only origin feat/mlflow-project
 
 **No subir a Git** bases SQLite, directorios `mlruns/`, `mlflow_tracking/`, `mlartifacts/`, datos privados, credenciales ni modelos generados. Revisar siempre `git status --short` antes de agregar archivos.
 
-## 11. Limitaciones conocidas y próximos pasos
+## 12. Limitaciones conocidas y próximos pasos
 
 | Tema | Estado / siguiente acción |
 |---|---|
 | P1 Random Forest, 100 árboles | **Validado** mediante MLflow Projects. |
-| P1 Random Forest, 300 árboles | Pendiente de ejecutar y comparar contra 100 árboles. |
+| P1 Random Forest, 300 árboles | Ejecutado durante la búsqueda; MAE de validación observado: 5.0110. |
 | Baseline P1 desde MLflow Projects | Disponible en el coordinador; pendiente de validación específica. |
 | P2 y P3 desde `train` | **No integrados**. Actualmente el coordinador informa que se incorporarán posteriormente; no debe interpretarse ese mensaje como entrenamiento exitoso. |
 | Ingesta mediante `mlflow run` | Declarada; pendiente de prueba integral. |
 | Entorno automático | `python_env.yaml` existe, pero su reconstrucción sin `--env-manager local` no está validada. |
-| Búsqueda de hiperparámetros | Pendiente de implementar y documentar con corridas anidadas (*nested runs*). |
+| Búsqueda de hiperparámetros | Implementada con corridas anidadas y recuperación sin reentrenar. |
 | Registro de modelos | Pendiente de usar el formato MLflow Model, firma, ejemplo de entrada, versiones y alias `champion`. |
 | Configuración | Revisar centralización de fechas y parámetros; evitar rutas específicas de un integrante. |
 | Documentación | Mantener esta guía actualizada con cada funcionalidad validada. |
 
-## 12. Solución rápida de problemas
+## 13. Solución rápida de problemas
 
 **`Connection refused` al puerto 5000:** comprobar que el servidor MLflow esté encendido y que `MLFLOW_TRACKING_URI` apunte a la dirección correcta.
 
@@ -277,3 +306,12 @@ git pull --ff-only origin feat/mlflow-project
 ---
 
 **Responsabilidad del equipo:** antes de considerar un paso como terminado, conservar el comando utilizado, el resultado observado, el identificador de corrida MLflow y el commit de GitHub asociado. Esta guía debe evolucionar junto con el Pull Request.
+
+
+## 14. Cierre de P1 y transferencia al equipo
+
+**Archivos para el commit en `feat/mlflow-project`:** `MLproject`, `mibici/modeling/run_project.py`, `mibici/modeling/train.py`, `mibici/modeling/search_p1.py` y este README. Revisar `git diff`, `git diff --check` y la sintaxis con `python -m py_compile` antes de confirmar. Hacer push y revisión por Pull Request; no fusionar sin aprobación del equipo.
+
+**Entrega de MLflow:** la base de referencia se encuentra en `~/tec/Operaciones ML/mlflow_tracking/mlflow.db`. Esta base SQLite guarda los metadatos de corridas, métricas, parámetros y etiquetas, pero los archivos de artefactos (gráficas y modelos `.joblib`) pueden estar almacenados aparte. Respaldar la base con la API de copia de SQLite, identificar y copiar los artefactos correspondientes y verificar el paquete antes de entregarlo. **No subir a GitHub la base, los datos ni los artefactos generados.**
+
+**Estado para los compañeros:** P1 tiene entrenamiento y evaluación registrados, búsqueda de hiperparámetros y selección recuperable sin entrenar. P2 y P3 conservan sus implementaciones propias, pero su integración al entry point `train` de MLflow Projects no está validada. La generación automática del entorno y la ingesta mediante MLflow Projects también están pendientes.
