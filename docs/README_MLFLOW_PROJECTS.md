@@ -1,99 +1,86 @@
 # Guía de ejecución de MLflow Projects — MiBici Equipo 36
 
-**Estado:** P1 y búsqueda de hiperparámetros con MLflow implementados; selección desde corridas existentes validada.  
+**Estado:** P1 validado: ingesta reproducible, experimentación, comparación con baseline, modelo nativo y Model Registry con alias `champion`.  
 **Fecha de corte:** 24 de octubre de 2026.  
 **Repositorio:** [maestria-mlops-equipo36/TC5061-Proyecto-Equipo36](https://github.com/maestria-mlops-equipo36/TC5061-Proyecto-Equipo36)  
-**Rama de trabajo:** `feat/mlflow-project`  
-**Último commit previamente documentado:** `0aecd6e`. Cambios recientes pendientes de commit.
+**Rama de integración:** `feat/mlflow-project`  
+**Rama de finalización P1:** `feat/p1-finalizacion`  
+**Último commit P1 confirmado:** `8ab3e7b`.
 
-> **Alcance de la validación:** el entrenamiento P1 con Random Forest y 100 árboles se ejecutó correctamente con `--env-manager local` y un servidor MLflow accesible en `http://127.0.0.1:5000`. La creación automática del entorno desde `python_env.yaml`, la ejecución de ingesta mediante MLflow Projects y la integración de P2/P3 aún requieren pruebas adicionales.
+> **Alcance de la validación:** ingesta y entrenamiento P1 ejecutados con `mlflow run` y `--env-manager local`, Python 3.12.13, MLflow 3.17.1 y tracking local `http://127.0.0.1:5000`. La creación automática del entorno desde `python_env.yaml` y la integración de P2/P3 al coordinador no se han validado. El Model Registry documentado reside en la instancia local utilizada para las pruebas.
 
 ## 1. Objetivo
 
-Esta guía permite a los integrantes del Equipo 36 comprender y reproducir el flujo inicial de **MLflow Projects**: ejecutar el proyecto mediante comandos parametrizados, registrar experimentos y consultar métricas y artefactos. Complementa el `README.md` principal del repositorio y no sustituye la documentación de las tres preguntas de negocio.
+Esta guía permite reproducir el flujo de **MLflow Projects** del Equipo 36: ingesta, entrenamiento, búsqueda de hiperparámetros, evaluación, trazabilidad y recuperación de modelos. Complementa el `README.md` principal.
 
-- **P1 — Regresión:** predecir cuántos viajes se iniciarán en una estación o zona durante un periodo futuro.
-- **P2 — Clasificación:** identificar riesgo de falta de bicicletas o de anclajes disponibles.
-- **P3 — Clustering:** agrupar estaciones con patrones de uso similares.
+- **P1 — Regresión:** estimar viajes iniciados en una estación durante un periodo futuro.
+- **P2 — Clasificación:** identificar riesgo de falta de bicicletas o anclajes.
+- **P3 — Clustering:** agrupar estaciones por patrones de uso.
 
-Actualmente **solo P1 está conectado al entry point `train`**. P2 y P3 conservan sus implementaciones previas, pero su integración en el coordinador está pendiente.
+La validación integral descrita aquí corresponde a **P1**. Las implementaciones de P2 y P3 existen por separado, pero su ejecución mediante el entry point `train` del coordinador sigue pendiente de integración y validación.
 
 ## 2. Archivos y responsabilidades
 
 | Archivo | Función |
 |---|---|
-| `MLproject` | Define el proyecto y los entry points `ingest` y `train`. |
-| `python_env.yaml` | Declara Python y las dependencias que MLflow debe utilizar al construir un entorno; su reconstrucción automática todavía no se ha validado. |
-| `mibici/modeling/run_project.py` | Recibe `question`, `model` y `n_estimators`; actualmente despacha el entrenamiento real de P1. |
-| `mibici/modeling/search_p1.py` | Búsqueda de tres configuraciones de P1 con corridas anidadas y recuperación del ganador sin entrenamiento. |
-| `mibici/modeling/train.py` | Contiene la implementación de P1 y P3; P1 acepta hiperparámetros de Random Forest y registra métricas y artefactos. |
-| `mibici/dataset.py` | Implementa la ingesta y preparación de datos. |
-| `mibici/config.py` | Centraliza rutas y otras constantes del proyecto. |
+| `MLproject` | Define los entry points `ingest` y `train` y sus parámetros. |
+| `python_env.yaml` | Declara Python 3.12.13 y dependencias; reconstrucción automática aún no validada. |
+| `mibici/modeling/run_project.py` | Despacha P1 y recibe `question`, `model`, `n_estimators`, `max_depth` y `min_samples_leaf`. |
+| `mibici/modeling/search_p1.py` | Búsqueda con corridas anidadas y selección desde corridas existentes. |
+| `mibici/modeling/train.py` | Entrenamiento y evaluación de P1, métricas, gráficas y registro nativo del modelo. Contiene también lógica P3 independiente. |
+| `mibici/dataset.py` | Ingesta, limpieza, Parquet, manifiesto y registro de este como artefacto MLflow. |
+| `mibici/config.py` | Centraliza rutas y constantes. |
 | `requirements.txt` | Dependencias del proyecto. |
 
-### Entry points declarados
-
-**Ingesta:**
+### Entry points
 
 ```bash
 python -m mibici.dataset --start-date 2025-10 --end-date 2026-09
+python -m mibici.modeling.run_project --question p1 --model rf --n-estimators 100 --max-depth 12 --min-samples-leaf 5
 ```
 
-**Entrenamiento:**
-
-```bash
-python -m mibici.modeling.run_project --question p1 --model rf --n-estimators 100
-```
-
-Estos comandos representan lo que invoca el archivo `MLproject`. No es necesario ejecutarlos directamente si se utiliza `mlflow run`.
+Son comandos internos; para reproducir el proyecto se recomienda `mlflow run`, como se muestra más adelante.
 
 ## 3. Requisitos previos
 
-1. Git y acceso al repositorio del equipo.
-2. Python **3.12.13** para reproducir el entorno local con el que se validó P1.
-3. MLflow **3.17.1** y las demás dependencias declaradas en `requirements.txt`.
-4. Archivos de datos MiBici disponibles localmente y rutas configuradas para la computadora de cada integrante.
-5. Un servidor MLflow accesible o una configuración de tracking equivalente.
+1. Git y acceso al repositorio.
+2. Python **3.12.13**, MLflow **3.17.1** y dependencias de `requirements.txt`.
+3. Los CSV originales MiBici accesibles mediante `MIBICI_DATA_DIR`.
+4. Servidor de tracking MLflow disponible y almacenamiento de artefactos accesible.
+5. Espacio suficiente para procesar los 12 CSV y escribir los Parquet.
 
-**Importante:** los archivos CSV originales y los datos procesados no deben agregarse al repositorio si están excluidos por `.gitignore`. Tampoco deben publicarse credenciales, modelos generados o directorios de tracking locales.
+**No publicar en Git:** CSV originales, Parquet generados, modelos `.joblib`, bases SQLite, directorios `mlruns/`, `mlartifacts/`, credenciales ni datos locales.
 
 ## 4. Obtener el código y preparar el entorno
 
-Desde una terminal:
+Para revisar los cambios de P1 antes de integrarlos:
 
 ```bash
 git clone https://github.com/maestria-mlops-equipo36/TC5061-Proyecto-Equipo36.git
 cd TC5061-Proyecto-Equipo36
 git fetch origin
-git switch feat/mlflow-project
+git switch feat/p1-finalizacion
 ```
 
-> Si ya existe un clon local, no es necesario volver a clonarlo: desde ese repositorio, consultar primero `git status`, cambiar a la rama y ejecutar `git pull --ff-only` cuando no existan cambios locales incompatibles.
+Si ya existe un clon, revisar `git status` antes de cambiar de rama. Tras aprobar el PR y fusionarlo en `feat/mlflow-project`, utilizar esa rama de integración para las pruebas del equipo.
 
-Crear y activar un entorno virtual (macOS/Linux):
+Entorno local macOS/Linux:
 
 ```bash
 python3.12 -m venv .venv312
 source .venv312/bin/activate
-python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python --version
 mlflow --version
 ```
 
-En Windows PowerShell, la activación habitual es:
+En Windows PowerShell: `.venv312\Scripts\Activate.ps1`.
 
-```powershell
-.venv312\Scripts\Activate.ps1
-```
-
-**Nota:** el nombre `.venv312` es una convención local; no es obligatorio. La instalación anterior utiliza `requirements.txt` en el entorno activo. Todavía **no** se ha comprobado que `mlflow run` sin `--env-manager local` pueda reconstruir el entorno automáticamente desde `python_env.yaml`.
+**Límite conocido:** `--env-manager local` utiliza el entorno activo. No demuestra que MLflow reconstruya correctamente el entorno desde `python_env.yaml`.
 
 ## 5. Configurar los datos MiBici
 
-La ingesta lee los archivos de origen desde una ubicación externa al repositorio. Cada integrante debe revisar `mibici/config.py` y la configuración de la variable de entorno `MIBICI_DATA_DIR` para apuntar a su propia carpeta de CSV.
-
-Ejemplo para macOS/Linux, **reemplazando la ruta**:
+Cada integrante debe configurar su propia carpeta de CSV, por ejemplo:
 
 ```bash
 export MIBICI_DATA_DIR="/ruta/local/a/datos_mibici"
@@ -105,25 +92,26 @@ En PowerShell:
 $env:MIBICI_DATA_DIR = "C:\ruta\local\datos_mibici"
 ```
 
-Antes de entrenar P1, comprobar que existe el archivo procesado esperado:
+Comprobar el resultado:
 
 ```bash
+python -c "from mibici.config import MIBICI_DATA_DIR; print(MIBICI_DATA_DIR)"
 ls -lh data/processed/viajes_limpios.parquet
 ```
 
-Si no existe, debe prepararse mediante el flujo de ingesta correspondiente. El entry point `ingest` ya está declarado, pero **aún no se ha validado una ingesta completa ejecutada mediante MLflow Projects**.
+El periodo validado abarca **octubre de 2025 a septiembre de 2026**, con 12 CSV, **4,340,052 viajes consolidados** y **484 estaciones en la nomenclatura**. Para el entrenamiento P1 se seleccionaron **348 estaciones** según el criterio de cobertura.
 
 ## 6. Configurar el tracking de MLflow
 
-En la validación del equipo se utilizó el servidor local:
+La instancia local utilizada para las pruebas está disponible en:
 
 ```text
 http://127.0.0.1:5000
 ```
 
-Esta dirección se refiere a **la computadora que ejecuta el comando**. No es una URL compartida entre integrantes; cada persona debe levantar su propio servidor o recibir la dirección de uno compartido.
+La base SQLite centralizada del entorno de referencia se ubica en `~/tec/Operaciones ML/mlflow_tracking/mlflow.db`. La ubicación de artefactos puede ser distinta de la base. La URL `127.0.0.1` no es compartida entre integrantes.
 
-Para un servidor de desarrollo local con almacenamiento SQLite y artefactos en carpetas del proyecto, una opción es ejecutar desde la raíz del repositorio, en otra terminal:
+Como alternativa para configurar un servidor de desarrollo independiente:
 
 ```bash
 mkdir -p mlflow_tracking mlartifacts
@@ -134,97 +122,76 @@ mlflow server \
   --port 5000
 ```
 
-> Esta es una **configuración sugerida**, no la misma ruta SQLite centralizada que se utilizó en la computadora donde se realizaron las pruebas. No iniciar dos servidores sobre el mismo puerto. Revisar que `mlflow_tracking/` y `mlartifacts/` estén excluidos de Git antes de utilizarlos. Si se emplea un servidor compartido, también debe configurarse correctamente el acceso a sus artefactos.
+No iniciar otro servidor si el puerto 5000 está ocupado. Configurar el tracking antes de ejecutar:
 
-Abrir la interfaz en el navegador: `http://127.0.0.1:5000`.
+```bash
+export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
+```
 
 ## 7. Ejecutar P1 con MLflow Projects (validado)
 
-Con el entorno virtual activo, los datos procesados disponibles y el servidor en funcionamiento, ejecutar desde la raíz del repositorio:
-
 ```bash
-MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
-mlflow run . \
-  -e train \
+mlflow run . -e train \
   -P question=p1 \
   -P model=rf \
   -P n_estimators=100 \
+  -P max_depth=12 \
+  -P min_samples_leaf=5 \
   --env-manager local \
   --experiment-name mibici-equipo36
 ```
 
-| Argumento | Significado |
-|---|---|
-| `-e train` | Selecciona el entry point de entrenamiento. |
-| `-P question=p1` | Selecciona la pregunta P1. |
-| `-P model=rf` | Utiliza Random Forest. |
-| `-P n_estimators=100` | Entrena con 100 árboles. |
-| `--env-manager local` | Usa el entorno Python ya activado; no lo reconstruye. |
-| `--experiment-name mibici-equipo36` | Guarda la corrida en el experimento del equipo. |
-| `MLFLOW_TRACKING_URI=...` | Indica el servidor donde registrar la ejecución. |
+Los tres hiperparámetros se probaron desde el entry point `train`. El entrenamiento usa una partición cronológica: **85,260** observaciones de entrenamiento, **21,576** de validación y **10,440** de prueba (septiembre de 2026).
 
-**Windows PowerShell:** la asignación de la variable de entorno se realiza por separado; luego se ejecuta el comando en una línea:
-
-```powershell
-$env:MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
-mlflow run . -e train -P question=p1 -P model=rf -P n_estimators=100 --env-manager local --experiment-name mibici-equipo36
-```
-
-El modelo P1 también admite los hiperparámetros `max_depth` y `min_samples_leaf` en la función Python, con valores predeterminados **12** y **5**, respectivamente. **Aún no están expuestos como parámetros del entry point `train`**; por ahora, desde `mlflow run`, se modifica `n_estimators`.
-
-### Ejecución de referencia confirmada
-
-- **Run ID:** `69e641e3245f4070b5df3dffca72cc15`
-- **Nombre de corrida:** `P1_random_forest`
-- **Estado:** `Finished`
-- **Registros usados:** 127,020 observaciones de 348 estaciones.
-- **Partición temporal:** 85,260 entrenamiento; 21,576 validación; 10,440 prueba.
+**Corrida final validada:** `59273199ad7d4362bdf77087a508da93`, estado `FINISHED`.
 
 | Métrica | Validación | Prueba |
 |---|---:|---:|
 | MAE | 5.0119 | 7.2366 |
 | RMSE | 7.8936 | 12.2953 |
 
-Estos valores son **evidencia de la ejecución realizada**, no garantías de resultados idénticos si cambian los datos, dependencias o condiciones del entorno.
+El modelo se reentrena con entrenamiento + validación antes de evaluar el conjunto de prueba. Ese modelo final es el que se registró de forma nativa en MLflow.
 
 ## 8. Búsqueda de hiperparámetros y selección P1
 
-El script `mibici/modeling/search_p1.py` compara Random Forest con el criterio **menor MAE de validación (`val_mae`)**. Los resultados observados durante el desarrollo fueron:
+`mibici/modeling/search_p1.py` implementa búsqueda con corridas anidadas y selección por MAE de validación. Resultados históricos:
 
-| Árboles | Profundidad | Muestras mínimas por hoja | MAE validación |
-|---:|---:|---:|---:|
-| 100 | 8 | 5 | 5.1026 |
-| 100 | 12 | 5 | 5.0119 |
-| 300 | 12 | 5 | 5.0110 |
+| Árboles | Profundidad | Mínimo por hoja | MAE validación | RMSE validación |
+|---:|---:|---:|---:|---:|
+| 100 | 8 | 5 | 5.1026 | 8.0282 |
+| 100 | 12 | 5 | 5.0119 | 7.8936 |
+| 300 | 12 | 5 | **5.0110** | **7.8904** |
 
-Estos resultados no necesariamente pertenecen todos a la misma corrida padre. La selección recuperada del padre indicado a continuación eligió **100 árboles, profundidad 12, MAE 5.0119**. El menor MAE conocido entre las tres configuraciones es 5.0110, correspondiente a 300 árboles; no debe confundirse con la selección de ese padre específico.
-
-**Entrenar tres pruebas nuevas** (solo si hace falta repetir el experimento):
+Los resultados no necesariamente provienen del mismo padre. La recuperación desde `57a29674e7284c0cb34570bc2aa5f4a2` seleccionó 100/12/5 dentro de sus hijos elegibles. Para una búsqueda nueva:
 
 ```bash
 python -m mibici.modeling.search_p1 --n-trials 3
 ```
 
-**Recuperar el mejor hijo de un padre existente sin entrenar:**
+Para recuperar sin reentrenar:
 
 ```bash
 python -m mibici.modeling.search_p1 --reuse-parent-run-id 57a29674e7284c0cb34570bc2aa5f4a2
 ```
 
-El identificador corresponde a la base local de referencia y debe sustituirse en otros entornos. El script consulta únicamente hijas terminadas de ese padre y crea una corrida `P1_MODELO_GANADOR_FINAL` con métricas de selección, *tags* de los hiperparámetros y el ID de la corrida hija elegida. **No registra un nuevo modelo en Model Registry.** Se comprobó esta recuperación sin reentrenar; no se ha vuelto a ejecutar una búsqueda completa con la última versión del script.
+**Decisión operativa P1:** se publicó la configuración **100/12/5**. La configuración de 300 árboles reduce el MAE de validación en apenas **0.0009**; se priorizó el modelo de 100 árboles por su menor tamaño/complejidad. No se documentó una comparación cronometrada de costo de entrenamiento, por lo que esta es una decisión razonada, no una demostración empírica de tiempos.
 
-La implementación evita intentar cambiar parámetros inmutables de una corrida existente: la configuración seleccionada se registra mediante *tags*. Se recomienda conservar las corridas históricas, incluso las fallidas, como evidencia.
+### Comparación contra baseline de siete días
 
-## 9. Consultar resultados y artefactos
+| Métrica | Baseline | Random Forest 100/12/5 | Reducción relativa |
+|---|---:|---:|---:|
+| MAE validación | 6.5526 | **5.0119** | 23.5% |
+| RMSE validación | 10.7318 | **7.8936** | 26.4% |
+| MAE prueba | 8.5673 | **7.2366** | 15.5% |
+| RMSE prueba | 14.7710 | **12.2953** | 16.8% |
 
-En la interfaz MLflow:
+Baseline consultado en la corrida `64b9cd5d29ae405e94a32f6cff998d96`. Los errores son menores con Random Forest en validación y prueba.
 
-1. Abrir el experimento `mibici-equipo36`.
-2. Seleccionar la corrida `P1_random_forest` correspondiente.
-3. Revisar **Overview** para las cuatro métricas, los parámetros y los tags.
-4. Revisar **Artifacts** para los archivos generados.
+## 9. Consultar resultados, artefactos y modelo nativo
 
-Se confirmó la presencia de:
+Abrir el experimento `mibici-equipo36` en MLflow y seleccionar la corrida P1 correspondiente.
+
+Artefactos de P1:
 
 ```text
 figures/
@@ -235,83 +202,123 @@ models/
   P1_random_forest.joblib
 ```
 
-**Interpretación inicial:** los errores son mayores en el conjunto de prueba que en validación. En importancia de variables destaca `promedio_mismo_dia_4_semanas`, seguida por `promedio_7_dias`. La distribución de errores se concentra cerca de cero, aunque presenta valores extremos.
+Además del `.joblib`, la corrida final `59273199ad7d4362bdf77087a508da93` registra un **Logged Model nativo** con `mlflow.sklearn.log_model()`, firma de **12 características** y `input_example`.
 
-**Distinción importante:** el archivo `.joblib` se almacena como artefacto, pero **todavía no se ha registrado un modelo en el formato nativo de MLflow con firma y ejemplo de entrada**, ni se ha publicado en Model Registry.
+- **Logged Model ID:** `m-5c010c8ea3094821a7292d4705052630`.
+- Se autorizó explícitamente el tipo interno `sklearn.tree._tree.Tree` para la serialización con `skops`, únicamente por tratarse de un modelo generado en el entorno de confianza del equipo.
+- Persiste una advertencia sobre columnas enteras y posibles valores faltantes en inferencia. No impidió el registro, pero requiere validación de entradas en un uso productivo.
 
-## 10. Ingesta desde MLflow Projects (declarada, pendiente de validación integral)
-
-El archivo `MLproject` contiene el entry point `ingest` con los parámetros `start_date` y `end_date`:
+## 10. Ingesta desde MLflow Projects (validada)
 
 ```bash
-MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
-mlflow run . \
-  -e ingest \
+mlflow run . -e ingest \
   -P start_date=2025-10 \
   -P end_date=2026-09 \
   --env-manager local \
   --experiment-name mibici-equipo36
 ```
 
-**No marcar este flujo como validado todavía.** Requiere disponer de los CSV originales, revisar la configuración de rutas y verificar la generación de los datos procesados y el manifiesto.
+**Validación realizada:** se ejecutó el entry point sobre los 12 CSV, con **4,340,052 viajes** y **484 estaciones**. Se compararon los SHA-256 de `viajes_limpios.parquet` y `estaciones.parquet` contra respaldos previos: ambos coincidieron exactamente. `diff -u` confirmó un manifiesto idéntico.
+
+- **Run de reproducibilidad:** `62f1a7e198a84e4b9f589e452160e01b`.
+- **Run con manifiesto como artefacto:** `f0166bff38444c73b77b1772c4048f9a`.
+- **Artefacto confirmado en la interfaz:** `data/data_manifest.json`.
+- **Versión de datos:** `mibici-2025-10_to_2026-09-v1`.
+- **SHA-256 del Parquet consolidado:** `97d150752ce4600dde9a440add61519dffc2ece15107f170980eca63d5b2208d`.
+
+**Precaución:** `dataset.py` sobrescribe `data/processed/estaciones.parquet`, `data/processed/viajes_limpios.parquet` y `data/data_manifest.json`. Respaldar antes de reingestar si es necesario conservar versiones previas.
 
 ## 11. Cambios publicados en GitHub
 
-Se trabaja sobre `feat/mlflow-project` para que los demás integrantes revisen los cambios mediante Pull Request hacia `main`. Comprobar en GitHub si el PR ya existe antes de crear otro.
+La estrategia de integración consiste en abrir PR desde `feat/p1-finalizacion` hacia **`feat/mlflow-project`**, no directamente a `main`.
 
 | Commit | Cambio principal |
 |---|---|
-| `2245d0d` | Integración inicial de `MLproject`, `python_env.yaml`, coordinador y parametrización de P1. |
-| `0aecd6e` | Reutilización de la corrida de MLflow Projects al registrar métricas y artefactos de P1. |
+| `2245d0d` | Integración inicial de MLflow Projects. |
+| `0aecd6e` | Reutilización de corrida MLflow Projects en P1. |
+| `b5115d4` | Búsqueda de hiperparámetros y documentación de P1 en rama de integración. |
+| `59a5aa2` | Registro del manifiesto de ingesta como artefacto MLflow. |
+| `8ab3e7b` | Registro nativo de Random Forest con firma y ejemplo de entrada. |
 
-Para actualizar la rama local antes de ejecutar:
+Los dos últimos commits se publicaron en `feat/p1-finalizacion`. La creación de la versión en Registry y el alias `champion` fueron acciones en la instancia local de MLflow: **no se transportan automáticamente mediante Git**.
+
+Antes de abrir el PR:
 
 ```bash
-git fetch origin
-git switch feat/mlflow-project
-git pull --ff-only origin feat/mlflow-project
+git status --short
+git diff --check
+git add README_MLFLOW_PROJECTS.md
+git commit -m "docs(p1): update MLflow Projects validation and registry guide"
+git push origin feat/p1-finalizacion
 ```
 
-**No subir a Git** bases SQLite, directorios `mlruns/`, `mlflow_tracking/`, `mlartifacts/`, datos privados, credenciales ni modelos generados. Revisar siempre `git status --short` antes de agregar archivos.
+En GitHub, configurar **base** `feat/mlflow-project` y **compare** `feat/p1-finalizacion`; solicitar revisión antes de fusionar.
 
 ## 12. Limitaciones conocidas y próximos pasos
 
 | Tema | Estado / siguiente acción |
 |---|---|
-| P1 Random Forest, 100 árboles | **Validado** mediante MLflow Projects. |
-| P1 Random Forest, 300 árboles | Ejecutado durante la búsqueda; MAE de validación observado: 5.0110. |
-| Baseline P1 desde MLflow Projects | Disponible en el coordinador; pendiente de validación específica. |
-| P2 y P3 desde `train` | **No integrados**. Actualmente el coordinador informa que se incorporarán posteriormente; no debe interpretarse ese mensaje como entrenamiento exitoso. |
-| Ingesta mediante `mlflow run` | Declarada; pendiente de prueba integral. |
-| Entorno automático | `python_env.yaml` existe, pero su reconstrucción sin `--env-manager local` no está validada. |
-| Búsqueda de hiperparámetros | Implementada con corridas anidadas y recuperación sin reentrenar. |
-| Registro de modelos | Pendiente de usar el formato MLflow Model, firma, ejemplo de entrada, versiones y alias `champion`. |
-| Configuración | Revisar centralización de fechas y parámetros; evitar rutas específicas de un integrante. |
-| Documentación | Mantener esta guía actualizada con cada funcionalidad validada. |
+| Ingesta P1 por MLflow Projects | **Validada**, con hashes y manifiesto como artefacto. |
+| Entrenamiento Random Forest P1 | **Validado** con 100/12/5. |
+| Búsqueda de hiperparámetros | Implementada con nested runs; resultados históricos conservados. |
+| Comparación contra baseline | **Validada** mediante métricas de MLflow. |
+| Logged Model con firma y ejemplo | **Validado**. |
+| Model Registry P1 | **Versión 1 y alias `champion` creados** en instancia local. |
+| Carga de `champion` | **Validada** mediante `mlflow.pyfunc.load_model()`. No se ejecutó una predicción de prueba tras cargarlo. |
+| P2 y P3 desde `train` | Pendiente de integración y validación por los responsables. |
+| Reconstrucción automática de entorno | Pendiente de validar sin `--env-manager local`. |
+| Costos de entrenamiento | No se compararon formalmente los tiempos de 100 vs. 300 árboles. |
+| Configuración | Revisar centralización de fechas y rutas portables. |
+| Reproducción del Registry en otros equipos | Requiere infraestructura y artefactos accesibles, o automatización de registro. |
 
 ## 13. Solución rápida de problemas
 
-**`Connection refused` al puerto 5000:** comprobar que el servidor MLflow esté encendido y que `MLFLOW_TRACKING_URI` apunte a la dirección correcta.
+**`Connection refused` al puerto 5000:** comprobar servidor y `MLFLOW_TRACKING_URI`.
 
-**No aparece `viajes_limpios.parquet`:** revisar el directorio `data/processed/`, la configuración de `MIBICI_DATA_DIR` y la ejecución previa de la ingesta.
+**No aparece `viajes_limpios.parquet`:** verificar `MIBICI_DATA_DIR`, archivos CSV y ejecución de `ingest`.
 
-**`ModuleNotFoundError`:** confirmar que el entorno virtual está activo e instalar las dependencias de `requirements.txt`.
+**`ModuleNotFoundError`:** activar el entorno correcto e instalar `requirements.txt`.
 
-**La corrida aparece, pero sin métricas:** comprobar que el comando realmente llegó a ejecutar P1 y no solo el coordinador; consultar la salida de la terminal y el estado de la corrida.
+**La corrida no tiene métricas:** comprobar que el coordinador haya ejecutado P1 y revisar su estado.
 
-**P2/P3 imprime un mensaje sin entrenar:** comportamiento actual conocido; todavía no están conectados al entry point `train`.
+**Error `UntrustedTypesFoundException` al registrar Random Forest:** con `skops`, revisar el origen del modelo y, solo para modelos propios y confiables, indicar `skops_trusted_types=["sklearn.tree._tree.Tree"]` en `mlflow.sklearn.log_model()`.
 
-**No aparecen los artefactos desde otra computadora:** revisar dónde almacena los artefactos el servidor MLflow; una ruta local de otro integrante no necesariamente es accesible remotamente.
+**Advertencia de enteros en la firma:** validar que las entradas de inferencia cumplan los tipos esperados y gestionar nulos antes de predecir.
 
----
+**No aparecen artefactos desde otra computadora:** comprobar la accesibilidad del artifact store; la base SQLite por sí sola no contiene los archivos del modelo.
 
-**Responsabilidad del equipo:** antes de considerar un paso como terminado, conservar el comando utilizado, el resultado observado, el identificador de corrida MLflow y el commit de GitHub asociado. Esta guía debe evolucionar junto con el Pull Request.
-
+**Error al crear versión de Registry con `source="models:/m-..."`:** utilizar la ubicación real del Logged Model (`client.get_logged_model(model_id).artifact_location`) y suministrar `model_id` a `create_model_version()`.
 
 ## 14. Cierre de P1 y transferencia al equipo
 
-**Archivos para el commit en `feat/mlflow-project`:** `MLproject`, `mibici/modeling/run_project.py`, `mibici/modeling/train.py`, `mibici/modeling/search_p1.py` y este README. Revisar `git diff`, `git diff --check` y la sintaxis con `python -m py_compile` antes de confirmar. Hacer push y revisión por Pull Request; no fusionar sin aprobación del equipo.
+### Model Registry P1
 
-**Entrega de MLflow:** la base de referencia se encuentra en `~/tec/Operaciones ML/mlflow_tracking/mlflow.db`. Esta base SQLite guarda los metadatos de corridas, métricas, parámetros y etiquetas, pero los archivos de artefactos (gráficas y modelos `.joblib`) pueden estar almacenados aparte. Respaldar la base con la API de copia de SQLite, identificar y copiar los artefactos correspondientes y verificar el paquete antes de entregarlo. **No subir a GitHub la base, los datos ni los artefactos generados.**
+- **Nombre registrado:** `mibici-equipo36-p1-demanda`.
+- **Versión:** `1`.
+- **Alias:** `champion`.
+- **Run de origen:** `59273199ad7d4362bdf77087a508da93`.
+- **Logged Model ID:** `m-5c010c8ea3094821a7292d4705052630`.
 
-**Estado para los compañeros:** P1 tiene entrenamiento y evaluación registrados, búsqueda de hiperparámetros y selección recuperable sin entrenar. P2 y P3 conservan sus implementaciones propias, pero su integración al entry point `train` de MLflow Projects no está validada. La generación automática del entorno y la ingesta mediante MLflow Projects también están pendientes.
+La carga del modelo ganador se verificó con:
+
+```python
+import mlflow
+
+mlflow.set_tracking_uri("http://127.0.0.1:5000")
+modelo = mlflow.pyfunc.load_model(
+    "models:/mibici-equipo36-p1-demanda@champion"
+)
+print(modelo.metadata.signature)
+```
+
+La salida confirmó la firma de las **12 columnas de entrada** y una salida de predicción `float64`. Esta prueba verifica la recuperación y metadatos; una prueba adicional con `modelo.predict(...)` queda recomendada.
+
+### Entrega y revisión
+
+- Abrir PR `feat/p1-finalizacion` → `feat/mlflow-project`, adjuntando resumen de métricas y corridas.
+- Solicitar revisión a otro integrante del equipo antes del merge.
+- Conservar evidencia de ingesta, artefactos, métricas, firma y alias `champion`.
+- No publicar la base SQLite ni artefactos en GitHub. Para compartir el entorno MLflow entre equipos, respaldar de manera consistente tanto metadatos como artefactos, o configurar un servidor accesible.
+- Integrar posteriormente P2 y P3 y validar la creación automática del entorno.
+
+**Conclusión:** P1 quedó validado funcionalmente en el entorno local de referencia. El cierre colaborativo requiere revisión del PR y su integración a la rama compartida.
