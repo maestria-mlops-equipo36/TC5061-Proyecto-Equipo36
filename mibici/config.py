@@ -38,6 +38,21 @@ DATA_MANIFEST_PATH = DATA_DIR / "data_manifest.json"
 MLFLOW_EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT_NAME", "mibici-equipo36")
 TEAM_NAME = "Equipo36"
 
+# Configuración por defecto para P3 (Clustering)
+P3_FEATURES_PATH = PROCESSED_DATA_DIR / "features_p3_estaciones.parquet"
+P3_DEFAULT_MODEL = "kmeans"
+P3_DEFAULT_N_CLUSTERS = 4
+P3_DEFAULT_COVARIANCE_TYPE = "full"
+P3_DEFAULT_INCLUIR_ESPACIAL = True
+P3_FEATURE_COLS_BASE = [
+    "ratio_flujo_neto",
+    "pct_salidas_pico_matutino",
+    "pct_salidas_pico_vespertino",
+    "pct_salidas_fin_de_semana",
+    "viajes_diarios_por_anclaje",
+]
+P3_FEATURE_COLS_ESPACIAL = P3_FEATURE_COLS_BASE + ["latitud", "longitud"]
+
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135
 try:
