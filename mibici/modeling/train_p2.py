@@ -5,10 +5,11 @@ Problema de Negocio:
     Clasificación del riesgo operativo de desabasto o saturación en cicloestaciones 
     de MiBici Guadalajara para la planeación del equipo de rebalanceo.
 
-Atiende observaciones de revisión:
+Atiende especificaciones de MLflow Projects (Segunda Entrega):
 1. Partición estrictamente temporal: Train (70%), Validación (15%), Prueba (15%).
 2. Métricas de la clase positiva (en_riesgo = 1): Precision, Recall, F1, además de F1-macro y ROC-AUC.
-3. Figuras en reports/figures/: Matriz de confusión y Curva ROC comparativa.
+3. Figuras en reports/figures/: Matriz de confusión, Curva ROC y Curva Precisión-Recall.
+4. Registro en Model Registry con alias 'champion' y firma de modelo.
 """
 
 import os
@@ -16,13 +17,16 @@ import json
 from pathlib import Path
 import matplotlib.pyplot as plt
 import mlflow
+import mlflow.data
 import mlflow.sklearn
+from mlflow.models.signature import infer_signature
 import numpy as np
 import pandas as pd
 from sklearn.dummy import DummyClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     ConfusionMatrixDisplay,
+    PrecisionRecallDisplay,
     f1_score,
     precision_score,
     recall_score,
@@ -49,7 +53,7 @@ def obtener_hash_datos() -> str:
     return "sin_hash"
 
 
-def ejecutar_experimento_p2():
+def preparar_datos_p2():
     viajes_path = PROCESSED_DATA_DIR / "viajes_limpios.parquet"
     estaciones_path = PROCESSED_DATA_DIR / "estaciones.parquet"
 
@@ -57,7 +61,7 @@ def ejecutar_experimento_p2():
     df_estaciones = pd.read_parquet(estaciones_path)
     df_p2 = calcular_features_riesgo_p2(df_viajes, df_estaciones, freq="2h")
 
-    # 1. Partición temporal en 3 bloques (Train: 70%, Val: 15%, Test: 15%)
+    # Partición temporal en 3 bloques (Train: 70%, Val: 15%, Test: 15%)
     df_p2 = df_p2.sort_values("ventana").reset_index(drop=True)
     n = len(df_p2)
     corte_train = int(n * 0.70)
@@ -67,84 +71,113 @@ def ejecutar_experimento_p2():
     val = df_p2.iloc[corte_train:corte_val]
     test = df_p2.iloc[corte_val:]
 
-    pred_columns = [
-        "capacidad",
-        "hora",
-        "dia_semana",
-        "es_fin_de_semana",
-        "lag_salidas",
-        "lag_llegadas",
-        "lag_flujo_neto",
-    ]
-    X_train, y_train = train[pred_columns], train["en_riesgo"]
-    X_val, y_val = val[pred_columns], val["en_riesgo"]
-    X_test, y_test = test[pred_columns], test["en_riesgo"]
+    pred_columns = ["capacidad","hora","dia_semana","es_fin_de_semana","lag_salidas","lag_llegadas","lag_flujo_neto",]
+    return (
+        train[pred_columns],
+        train["en_riesgo"],
+        val[pred_columns],
+        val["en_riesgo"],
+        test[pred_columns],
+        test["en_riesgo"],
+    )
 
-    # MLflow Setup dinámico con fallback a 5000
+
+def p2_clasificacion(
+    modelo_tipo="logistic_regression",
+    c_param=1.0,
+    solver="lbfgs",
+    penalty="l2",
+    stage_of_work="candidate",
+):
+    """Función unificada compatible con CLI de run_project y MLproject."""
     mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
     mlflow.set_tracking_uri(mlflow_uri)
-    mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
-    version_datos = obtener_hash_datos()
 
+    # Solo cambiar de experimento si no estamos dentro de un run previo de MLflow Projects
+    if not mlflow.active_run():
+        mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
+    version_datos = obtener_hash_datos()
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
-    # -------------------------------------------------------------------------
-    # Corrida 1: Baseline (DummyClassifier)
-    # -------------------------------------------------------------------------
-    with mlflow.start_run(run_name="P2_Baseline_DummyClassifier"):
+    X_train, y_train, X_val, y_val, X_test, y_test = preparar_datos_p2()
+
+    # Log dataset formal de entrenamiento
+    dataset_mlflow = mlflow.data.from_pandas(
+        pd.concat([X_train, y_train], axis=1),
+        targets="en_riesgo",
+        name="p2_train_dataset",
+    )
+
+    # Reutilizar la corrida activa de MLflow Projects si existe
+    active_run = mlflow.active_run()
+    run_context = active_run if active_run else mlflow.start_run(run_name=f"P2_{modelo_tipo}")
+
+    with run_context:
         mlflow.set_tag("equipo", "equipo36")
-        mlflow.set_tag("pregunta", "P2")
-        mlflow.set_tag("tipo_modelo", "baseline")
+        mlflow.set_tag("question", "p2")
+        mlflow.set_tag("model_family", "baseline" if modelo_tipo == "baseline" else "linear_model")
+        mlflow.set_tag("stage_of_work", stage_of_work)
+
         mlflow.log_param("version_datos", version_datos)
-        mlflow.log_param("strategy", "most_frequent")
+        mlflow.log_param("modelo_tipo", modelo_tipo)
+        mlflow.log_input(dataset_mlflow, context="training")
 
-        dummy = DummyClassifier(strategy="most_frequent")
-        dummy.fit(X_train, y_train)
-        y_pred_dummy = dummy.predict(X_test)
-        y_prob_dummy = dummy.predict_proba(X_test)[:, 1]
+        # ---------------------------------------------------------------------
+        # 1. BASELINE (DummyClassifier)
+        # ---------------------------------------------------------------------
+        if modelo_tipo == "baseline":
+            mlflow.log_param("strategy", "most_frequent")
+            dummy = DummyClassifier(strategy="most_frequent")
+            dummy.fit(X_train, y_train)
+            y_pred = dummy.predict(X_test)
 
-        # Métricas generales y de la clase positiva solicitadas
-        f1_macro = f1_score(y_test, y_pred_dummy, average="macro", zero_division=0)
-        prec_pos = precision_score(y_test, y_pred_dummy, pos_label=1, zero_division=0)
-        rec_pos = recall_score(y_test, y_pred_dummy, pos_label=1, zero_division=0)
-        f1_pos = f1_score(y_test, y_pred_dummy, pos_label=1, zero_division=0)
+            f1_macro = f1_score(y_test, y_pred, average="macro", zero_division=0)
+            prec_pos = precision_score(y_test, y_pred, pos_label=1, zero_division=0)
+            rec_pos = recall_score(y_test, y_pred, pos_label=1, zero_division=0)
+            f1_pos = f1_score(y_test, y_pred, pos_label=1, zero_division=0)
 
-        mlflow.log_metric("test_f1_macro", f1_macro)
-        mlflow.log_metric("test_precision_pos", prec_pos)
-        mlflow.log_metric("test_recall_pos", rec_pos)
-        mlflow.log_metric("test_f1_pos", f1_pos)
+            mlflow.log_metric("test_f1_macro", f1_macro)
+            mlflow.log_metric("test_precision_pos", prec_pos)
+            mlflow.log_metric("test_recall_pos", rec_pos)
+            mlflow.log_metric("test_f1_pos", f1_pos)
 
-    # -------------------------------------------------------------------------
-    # Corrida 2: Modelo Candidato (LogisticRegression con validación)
-    # -------------------------------------------------------------------------
-    with mlflow.start_run(run_name="P2_Candidato_LogisticRegression"):
-        mlflow.set_tag("equipo", "equipo36")
-        mlflow.set_tag("pregunta", "P2")
-        mlflow.set_tag("tipo_modelo", "candidato")
-        mlflow.log_param("version_datos", version_datos)
-        mlflow.log_param("C", 1.0)
-        mlflow.log_param("solver", "lbfgs")
-        mlflow.log_param("random_state", RANDOM_SEED)
+            print(f" Baseline P2 registrado exitosamente:")
+            print(f"    test_f1_macro: {f1_macro:.4f} | test_recall_pos: {rec_pos:.4f}")
+            return f1_macro
+
+        # ---------------------------------------------------------------------
+        # 2. MODELO CANDIDATO (LogisticRegression Parametrizado)
+        # ---------------------------------------------------------------------
+        mlflow.log_param("C", c_param)
+        mlflow.log_param("solver", solver)
+        mlflow.log_param("penalty", penalty)
         mlflow.log_param("class_weight", "balanced")
+        mlflow.log_param("random_state", RANDOM_SEED)
 
         modelo = LogisticRegression(
-            C=1.0,
-            solver="lbfgs",
+            C=c_param,
+            solver=solver,
+            penalty=penalty,
             class_weight="balanced",
             max_iter=500,
             random_state=RANDOM_SEED,
         )
         modelo.fit(X_train, y_train)
 
-        # Evaluación en Test
-        y_pred = modelo.predict(X_test)
-        y_prob = modelo.predict_proba(X_test)[:, 1]
+        # Validación
+        y_pred_val = modelo.predict(X_val)
+        val_f1 = f1_score(y_val, y_pred_val, average="macro")
+        mlflow.log_metric("val_f1_macro", val_f1)
 
-        f1_macro_lr = f1_score(y_test, y_pred, average="macro")
-        auc_lr = roc_auc_score(y_test, y_prob)
-        prec_pos_lr = precision_score(y_test, y_pred, pos_label=1, zero_division=0)
-        rec_pos_lr = recall_score(y_test, y_pred, pos_label=1, zero_division=0)
-        f1_pos_lr = f1_score(y_test, y_pred, pos_label=1, zero_division=0)
+        # Prueba
+        y_pred_test = modelo.predict(X_test)
+        y_prob_test = modelo.predict_proba(X_test)[:, 1]
+
+        f1_macro_lr = f1_score(y_test, y_pred_test, average="macro")
+        auc_lr = roc_auc_score(y_test, y_prob_test)
+        prec_pos_lr = precision_score(y_test, y_pred_test, pos_label=1, zero_division=0)
+        rec_pos_lr = recall_score(y_test, y_pred_test, pos_label=1, zero_division=0)
+        f1_pos_lr = f1_score(y_test, y_pred_test, pos_label=1, zero_division=0)
 
         mlflow.log_metric("test_f1_macro", f1_macro_lr)
         mlflow.log_metric("test_roc_auc", auc_lr)
@@ -152,39 +185,58 @@ def ejecutar_experimento_p2():
         mlflow.log_metric("test_recall_pos", rec_pos_lr)
         mlflow.log_metric("test_f1_pos", f1_pos_lr)
 
-        # 1. Matriz de confusión
+        # Artefacto 1: Matriz de confusión
         cm_path = FIGURES_DIR / "p2_confusion_matrix.png"
         fig, ax = plt.subplots(figsize=(5, 4))
-        ConfusionMatrixDisplay.from_predictions(y_test, y_pred, ax=ax, cmap="Blues", colorbar=True)
+        ConfusionMatrixDisplay.from_predictions(y_test, y_pred_test, ax=ax, cmap="Blues", colorbar=True)
         ax.set_title("P2: Matriz de Confusión (Riesgo en Estación)")
         plt.tight_layout()
         plt.savefig(cm_path)
         plt.close()
-        mlflow.log_artifact(str(cm_path))
+        mlflow.log_artifact(str(cm_path), artifact_path="figures")
 
-        # 2. Curva ROC Comparativa (Baseline vs Logistic Regression)
+        # Artefacto 2: Curva Precisión-Recall
+        pr_path = FIGURES_DIR / "p2_precision_recall_curve.png"
+        fig, ax = plt.subplots(figsize=(5, 4))
+        PrecisionRecallDisplay.from_predictions(y_test, y_prob_test, ax=ax, color="purple")
+        ax.set_title("P2: Curva Precisión-Recall")
+        plt.tight_layout()
+        plt.savefig(pr_path)
+        plt.close()
+        mlflow.log_artifact(str(pr_path), artifact_path="figures")
+
+        # Artefacto 3: Curva ROC
         roc_path = FIGURES_DIR / "p2_roc_curve.png"
-        fpr_lr, tpr_lr, _ = roc_curve(y_test, y_prob)
-        fpr_dm, tpr_dm, _ = roc_curve(y_test, y_prob_dummy)
-
-        plt.figure(figsize=(6, 5))
-        plt.plot(fpr_lr, tpr_lr, label=f"Logistic Regression (AUC = {auc_lr:.3f})", color="blue")
-        plt.plot(fpr_dm, tpr_dm, label="Baseline Dummy (AUC = 0.500)", color="gray", linestyle="--")
+        fpr, tpr, _ = roc_curve(y_test, y_prob_test)
+        plt.figure(figsize=(5, 4))
+        plt.plot(fpr, tpr, label=f"Logistic Regression (AUC = {auc_lr:.3f})", color="blue")
         plt.plot([0, 1], [0, 1], "k:", alpha=0.5)
-        plt.title("P2: Curva ROC Comparativa")
-        plt.xlabel("Tasa de Falsos Positivos (FPR)")
-        plt.ylabel("Tasa de Verdaderos Positivos (TPR)")
+        plt.title("P2: Curva ROC")
         plt.legend(loc="lower right")
         plt.tight_layout()
         plt.savefig(roc_path)
         plt.close()
-        mlflow.log_artifact(str(roc_path))
+        mlflow.log_artifact(str(roc_path), artifact_path="figures")
 
-        mlflow.sklearn.log_model(modelo, "modelo_clasificacion_p2")
-        print(f"[✓] Candidato P2 registrado con éxito:")
-        print(f"    test_f1_macro: {f1_macro_lr:.4f} | test_roc_auc: {auc_lr:.4f}")
+        # Registro nativo del modelo con firma y ejemplo
+        signature = infer_signature(X_train, modelo.predict(X_train))
+        input_example = X_train.iloc[:5]
+
+        model_name = "mibici-equipo36-p2-riesgo"
+        mlflow.sklearn.log_model(
+            sk_model=modelo,
+            artifact_path="modelo_clasificacion_p2",
+            signature=signature,
+            input_example=input_example,
+            registered_model_name=model_name,
+        )
+
+        print(f" Candidato P2 registrado exitosamente (C={c_param}, solver={solver}):")
+        print(f"    Val F1: {val_f1:.4f} | Test F1-macro: {f1_macro_lr:.4f} | ROC-AUC: {auc_lr:.4f}")
         print(f"    Clase Positiva -> Precision: {prec_pos_lr:.4f} | Recall: {rec_pos_lr:.4f} | F1: {f1_pos_lr:.4f}")
+
+        return val_f1
 
 
 if __name__ == "__main__":
-    ejecutar_experimento_p2()
+    p2_clasificacion()
