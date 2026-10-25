@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 import pandas as pd
+import mlflow
 import requests
 import typer
 from loguru import logger
@@ -258,7 +259,12 @@ def main(
         json.dump(manifest_data, f, indent=2, ensure_ascii=False)
 
     logger.success(f"Manifiesto de datos generado exitosamente en: {DATA_MANIFEST_PATH}")
-
+    # Registrar el manifiesto como artefacto de MLflow Projects
+    if mlflow.active_run() is not None:
+        mlflow.log_artifact(str(DATA_MANIFEST_PATH), artifact_path="data")
+    elif mlflow.get_tracking_uri():
+        with mlflow.start_run():
+            mlflow.log_artifact(str(DATA_MANIFEST_PATH), artifact_path="data")
 
 if __name__ == "__main__":
     app()

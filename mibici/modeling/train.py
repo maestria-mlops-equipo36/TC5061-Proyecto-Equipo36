@@ -22,6 +22,7 @@ from sklearn.mixture import GaussianMixture
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from contextlib import nullcontext
+from mlflow.models import infer_signature
 from tempfile import TemporaryDirectory
 from mlflow.models import infer_signature
 
@@ -625,6 +626,26 @@ def p1_regresion(
             mlflow.log_artifact(
                 str(model_file),
                 artifact_path="models",
+            )
+
+            # Registrar modelo P1 en formato nativo de MLflow
+            input_example = df_train_final[feature_cols].head(5).copy()
+
+            signature = infer_signature(
+                input_example,
+                model.predict(input_example),
+            )
+
+            mlflow.sklearn.log_model(
+                sk_model=model,
+                name="modelo_p1_random_forest",
+                signature=signature,
+                input_example=input_example,
+                skops_trusted_types=["sklearn.tree._tree.Tree"],
+            )
+
+            logger.success(
+                "Modelo P1 registrado en MLflow con signature e input_example."
             )
 
         logger.success(
