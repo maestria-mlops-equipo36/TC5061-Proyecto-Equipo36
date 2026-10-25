@@ -36,6 +36,10 @@ def main():
     parser.add_argument("--n-estimators", type=int, default=100)
     parser.add_argument("--max-depth", type=int, default=12)
     parser.add_argument("--min-samples-leaf", type=int, default=5)
+    # Parámetros de P2 
+    parser.add_argument("--c-param", type=float, default=1.0)
+    parser.add_argument("--solver", type=str, default="lbfgs")
+    parser.add_argument("--penalty", type=str, default="l2")
     # Parámetros de P3 (valores por defecto desde mibici.config)
     parser.add_argument(
         "--n-clusters", type=int, default=P3_DEFAULT_N_CLUSTERS
@@ -83,6 +87,33 @@ def main():
             max_depth=args.max_depth,
             min_samples_leaf=args.min_samples_leaf,
         )
+    
+    elif args.question == "p2":
+        from mibici.modeling.search_p2 import ejecutar_busqueda_p2
+        from mibici.modeling.train_p2 import p2_clasificacion
+
+        modelo_p2 = args.model.strip().lower()
+        print(f"Configuración P2: C={args.c_param}, solver={args.solver}, penalty={args.penalty}")
+
+        if modelo_p2 in ("baseline", "dummy"):
+            p2_clasificacion(
+                modelo_tipo="baseline",
+                stage_of_work=stage or "baseline",
+            )
+        elif modelo_p2 in ("lr", "logistic_regression", "candidate"):
+            p2_clasificacion(
+                modelo_tipo="logistic_regression",
+                c_param=args.c_param,
+                solver=args.solver,
+                penalty=args.penalty,
+                stage_of_work=stage or "candidate",
+            )
+        elif modelo_p2 == "search":
+            ejecutar_busqueda_p2()
+        else:
+            parser.error(
+                "Para P2 utiliza 'baseline', 'lr', 'logistic_regression' o 'search'."
+            )
 
     elif args.question == "p3":
         from mibici.modeling.baseline_reglas import ejecutar_baseline_reglas_p3

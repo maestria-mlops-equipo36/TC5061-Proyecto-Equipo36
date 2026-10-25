@@ -22,6 +22,9 @@ entry_points:
       n_clusters: {type: int, default: 4}
       covariance_type: {type: str, default: "full"}
       incluir_espacial: {type: str, default: "true"}
+      c_param: {type: float, default: 1.0}
+      solver: {type: str, default: "lbfgs"}
+      penalty: {type: str, default: "l2"}
       stage_of_work: {type: str, default: "auto"}
     command: >
       python -m mibici.modeling.run_project
@@ -33,4 +36,7 @@ entry_points:
       --n-clusters {n_clusters}
       --covariance-type {covariance_type}
       --incluir-espacial {incluir_espacial}
+      --c-param {c_param}
+      --solver {solver}
+      --penalty {penalty}
       --stage-of-work {stage_of_work}
