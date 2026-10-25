@@ -4,6 +4,12 @@
 
 [![Cookiecutter Data Science](https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter)](https://cookiecutter-data-science.drivendata.org/)
 
+**Integrantes:**
+- Francisco Gómez Rubio A00710437 **GitHub Maintainer**
+- Carolina Nicole González Leal A01284948 **ML Engineer (P1)**
+- Alan Ortiz González A01840596 **ML Engineer (P2)**
+- Alan Ricardo González Aguilar A01633872 **ML Engineer (P3)**
+
 Repositorio de trabajo colaborativo para organizar, validar y posteriormente analizar datos abiertos de viajes del sistema MiBici. El proyecto utiliza la estructura de **Cookiecutter Data Science** y busca mantener separados el código versionado y los datos originales.
 
 **Repositorio:** https://github.com/maestria-mlops-equipo36/TC5061-Proyecto-Equipo36
