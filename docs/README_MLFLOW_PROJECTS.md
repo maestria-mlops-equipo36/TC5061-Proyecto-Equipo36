@@ -420,3 +420,75 @@ La salida confirmó la firma de las **12 columnas de entrada** y una salida de p
 - Integrar posteriormente P2 y P3 y validar la creación automática del entorno.
 
 **Conclusión:** P1 quedó validado funcionalmente en el entorno local de referencia. El cierre colaborativo requiere revisión del PR y su integración a la rama compartida.
+**Estado para los compañeros:** P1 tiene entrenamiento y evaluación registrados, búsqueda de hiperparámetros y selección recuperable sin entrenar. P2 y P3 conservan sus implementaciones propias, pero su integración al entry point `train` de MLflow Projects no está validada. La generación automática del entorno y la ingesta mediante MLflow Projects también están pendientes.
+
+
+## 15. Model Registry y ciclo de vida de los modelos
+
+Para gestionar los modelos seleccionados de las tres preguntas de negocio, se utiliza **MLflow Model Registry**. Cada modelo se registra con un nombre consistente, una descripción y metadatos de linaje que permiten relacionarlo con su corrida de entrenamiento, experimento, commit de Git y versión de datos.
+
+### Modelos registrados
+
+| Pregunta | Nombre en Model Registry | Versión | Alias |
+|---|---|---|---|
+| P1 — Predicción de demanda | `mibici-equipo36-p1-demanda` | 1 | `champion` |
+| P2 — Clasificación de riesgo | `mibici-equipo36-p2-riesgo` | 1 | `champion` |
+| P3 — Agrupación de estaciones | `mibici-equipo36-p3-grupos` | 1 | `champion` |
+
+Los modelos registrados corresponden a las configuraciones seleccionadas mediante las métricas de validación de cada pregunta:
+
+- **P1:** Random Forest con 300 árboles, profundidad máxima de 12 y mínimo de 5 muestras por hoja.
+- **P2:** Regresión logística con `C=0.01` y balanceo de clases.
+- **P3:** K-Means con `k=5`.
+
+### Esquema de ciclo de vida
+
+Se utiliza el esquema de **aliases** de MLflow, en lugar de las etapas clásicas como `Production` y `Staging`.
+
+El alias `champion` identifica la versión seleccionada para producción. Este esquema permite actualizar el modelo de referencia sin modificar el nombre utilizado por los consumidores y es compatible con el enfoque vigente de MLflow Model Registry.
+
+La asignación de `champion` representa la selección del modelo para producción dentro del registro; no implica que exista un servicio de inferencia desplegado.
+
+### Registro de modelos
+
+Con el servidor MLflow en funcionamiento y desde la raíz del repositorio, ejecutar:
+
+```bash
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+python -m mibici.modeling.register_models
+```
+
+El script registra los modelos seleccionados, asigna el alias `champion` y conserva la información de linaje disponible.
+
+### Verificación del registro
+
+Para verificar los modelos registrados:
+
+```bash
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+python -m mibici.modeling.verify_registry
+```
+
+La validación comprueba la disponibilidad de los tres modelos mediante sus nombres y aliases, así como sus metadatos y firmas.
+
+Durante las pruebas locales se obtuvo el siguiente resultado:
+
+```text
+P1: OK
+P2: OK
+P3: OK
+```
+
+Adicionalmente, se comprobó que los tres modelos pueden cargarse y ejecutar inferencia utilizando sus aliases `champion`.
+
+### Carga de modelos por alias
+
+Los modelos pueden consultarse mediante las siguientes URI:
+
+```text
+models:/mibici-equipo36-p1-demanda@champion
+models:/mibici-equipo36-p2-riesgo@champion
+models:/mibici-equipo36-p3-grupos@champion
+```
+
+**Nota:** Los modelos registrados y sus artefactos se encuentran en el servidor MLflow utilizado durante las pruebas. No se almacenan directamente en GitHub. Para reproducir el registro en otro entorno, primero deben ejecutarse los entrenamientos correspondientes y contar con acceso a sus artefactos.
