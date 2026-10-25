@@ -116,3 +116,26 @@ def test_archivos_parquet_reales_si_existen():
     df_estaciones = pd.read_parquet(estaciones_path)
     assert len(df_estaciones) >= 400
     assert "estacion_id" in df_estaciones.columns
+
+
+def test_parse_bool_run_project():
+    """Valida el parseo de argumentos booleanos en el coordinador de MLflow Projects."""
+    from mibici.modeling.run_project import _parse_bool
+
+    assert _parse_bool("true") is True
+    assert _parse_bool("True") is True
+    assert _parse_bool("1") is True
+    assert _parse_bool("false") is False
+    assert _parse_bool("False") is False
+    assert _parse_bool("0") is False
+
+
+def test_configuraciones_search_p3():
+    """Verifica que la búsqueda de hiperparámetros P3 incluya al menos 3 configuraciones válidas."""
+    from mibici.modeling.search_p3 import CONFIGURACIONES
+
+    assert len(CONFIGURACIONES) >= 3
+    for cfg in CONFIGURACIONES:
+        assert cfg["modelo_tipo"] in ("kmeans", "gmm")
+        assert cfg["n_clusters"] >= 2
+        assert "incluir_espacial" in cfg

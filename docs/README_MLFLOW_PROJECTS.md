@@ -18,6 +18,7 @@ Esta guía permite reproducir el flujo de **MLflow Projects** del Equipo 36: ing
 - **P3 — Clustering:** agrupar estaciones por patrones de uso.
 
 La validación integral descrita aquí corresponde a **P1**. Las implementaciones de P2 y P3 existen por separado, pero su ejecución mediante el entry point `train` del coordinador sigue pendiente de integración y validación.
+Actualmente **P1 y P3 están conectados al entry point `train`**. P2 conserva su implementación previa y su integración en el coordinador está en curso.
 
 ## 2. Archivos y responsabilidades
 
@@ -30,6 +31,15 @@ La validación integral descrita aquí corresponde a **P1**. Las implementacione
 | `mibici/modeling/train.py` | Entrenamiento y evaluación de P1, métricas, gráficas y registro nativo del modelo. Contiene también lógica P3 independiente. |
 | `mibici/dataset.py` | Ingesta, limpieza, Parquet, manifiesto y registro de este como artefacto MLflow. |
 | `mibici/config.py` | Centraliza rutas y constantes. |
+| `MLproject` | Define el proyecto y los entry points `ingest` y `train` (parametrizados para P1 y P3). |
+| `python_env.yaml` | Declara Python y las dependencias que MLflow debe utilizar al construir un entorno; su reconstrucción automática todavía no se ha validado. |
+| `mibici/modeling/run_project.py` | Recibe `question`, `model` e hiperparámetros; despacha el entrenamiento y búsqueda de P1 y P3. |
+| `mibici/modeling/search_p1.py` | Búsqueda de tres configuraciones de P1 con corridas anidadas y recuperación del ganador sin entrenamiento. |
+| `mibici/modeling/search_p3.py` | Búsqueda de cinco configuraciones de P3 (K-Means y GMM) con corridas anidadas (`nested=True`) y selección automática del ganador. |
+| `mibici/modeling/baseline_reglas.py` | Referencia basada en reglas de intensidad (`viajes_diarios_por_anclaje`) para P3 integrada con MLflow Projects. |
+| `mibici/modeling/train.py` | Contiene la implementación de P1 y P3; en P3 registra pipeline (`StandardScaler` + modelo) con firma (`signature`), `input_example`, `mlflow.log_input`, gráficas y configuración. |
+| `mibici/dataset.py` | Implementa la ingesta y preparación de datos. |
+| `mibici/config.py` | Centraliza rutas y otras constantes del proyecto. |
 | `requirements.txt` | Dependencias del proyecto. |
 
 ### Entry points
@@ -207,6 +217,83 @@ Además del `.joblib`, la corrida final `59273199ad7d4362bdf77087a508da93` regis
 - **Logged Model ID:** `m-5c010c8ea3094821a7292d4705052630`.
 - Se autorizó explícitamente el tipo interno `sklearn.tree._tree.Tree` para la serialización con `skops`, únicamente por tratarse de un modelo generado en el entorno de confianza del equipo.
 - Persiste una advertencia sobre columnas enteras y posibles valores faltantes en inferencia. No impidió el registro, pero requiere validación de entradas en un uso productivo.
+## 9.5 Ejecutar P3 (Clustering de Estaciones) con MLflow Projects (validado)
+
+La Pregunta 3 (P3) está integrada en el punto de entrada `train` de `MLproject` y calcula automáticamente `data/processed/features_p3_estaciones.parquet` si aún no existe después de `ingest`. Evalúa las 484 estaciones del sistema sobre las siete características estandarizadas (`ratio_flujo_neto`, `pct_salidas_pico_matutino`, `pct_salidas_pico_vespertino`, `pct_salidas_fin_de_semana`, `viajes_diarios_por_anclaje`, `latitud` y `longitud`).
+
+### Comandos reproducibles con `mlflow run`
+
+```bash
+# 1. Referencia basada en reglas de intensidad (Percentiles 33 y 67)
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+mlflow run . \
+  -e train \
+  -P question=p3 \
+  -P model=baseline \
+  --env-manager local \
+  --experiment-name mibici-equipo36
+
+# 2. Baseline oficial de clustering: K-Means k=3
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+mlflow run . \
+  -e train \
+  -P question=p3 \
+  -P model=kmeans \
+  -P n_clusters=3 \
+  -P stage_of_work=baseline \
+  --env-manager local \
+  --experiment-name mibici-equipo36
+
+# 3. Búsqueda de hiperparámetros con corridas anidadas (Nested Runs: 5 configuraciones)
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+mlflow run . \
+  -e train \
+  -P question=p3 \
+  -P model=search \
+  --env-manager local \
+  --experiment-name mibici-equipo36
+
+# 4. Corridas candidatas individuales (K-Means k=4, K-Means k=5, GMM k=4 full y diag)
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+mlflow run . -e train -P question=p3 -P model=kmeans -P n_clusters=4 -P stage_of_work=candidate --env-manager local --experiment-name mibici-equipo36
+
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+mlflow run . -e train -P question=p3 -P model=kmeans -P n_clusters=5 -P stage_of_work=candidate --env-manager local --experiment-name mibici-equipo36
+
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+mlflow run . -e train -P question=p3 -P model=gmm -P n_clusters=4 -P covariance_type=full -P stage_of_work=candidate --env-manager local --experiment-name mibici-equipo36
+
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+mlflow run . -e train -P question=p3 -P model=gmm -P n_clusters=4 -P covariance_type=diag -P stage_of_work=candidate --env-manager local --experiment-name mibici-equipo36
+```
+
+### Tabla comparativa de experimentos P3
+
+| Corrida / Modelo | Rol (`stage_of_work`) | Hiperparámetros clave | Silhouette (↑) | Davies-Bouldin (↓) | Calinski-Harabasz (↑) | Tamaño de grupos (estaciones) | Mejora Silhouette vs. Baseline (k=3) |
+|---|---|---|---:|---:|---:|---|---:|
+| `P3_reglas_intensidad_k3_espacial` | `baseline` (reglas) | Percentiles 33 / 67 | 0.0592 | 4.5544 | 32.27 | `[160, 164, 160]` | -74.5% |
+| `P3_kmeans_k3_espacial` | `baseline` | `k=3, n_init=10` | 0.2323 | 1.3457 | 117.79 | `[284, 185, 15]` | — (0.0%) |
+| `P3_kmeans_k4_espacial` | `candidate` | `k=4, n_init=10` | 0.2481 | 1.2551 | 130.53 | `[103, 15, 222, 144]` | **+6.8%** |
+| **`P3_kmeans_k5_espacial`** | **`candidate` (Ganador)** | **`k=5, n_init=10`** | **0.2721** | **1.1990** | **138.55** | **`[128, 133, 106, 102, 15]`** | **+17.1%** |
+| `P3_gmm_k4_espacial` | `candidate` | `k=4, cov=full` | 0.2296 | 1.3782 | 113.25 | `[230, 108, 15, 131]` | -1.2% |
+| `P3_gmm_diag_k4_espacial` | `candidate` | `k=4, cov=diag` | 0.2290 | 1.3729 | 114.09 | `[238, 91, 15, 140]` | -1.4% |
+
+### Artefactos registrados en cada corrida candidata P3
+
+Cada corrida candidata de P3 registra de forma estructurada:
+- `model/`: Pipeline de `scikit-learn` (`StandardScaler` + algoritmo de clustering) registrado con `mlflow.sklearn.log_model`, incluyendo firma (`signature`) e `input_example`.
+- `plots/` y `figures/`: Mapa geográfico de clusters (`*_mapa.png`) y perfil de comportamiento por grupo (`*_perfil.png`).
+- `data/`: Manifiesto de versión de datos (`data_manifest.json`), tabla de estaciones con su cluster asignado (`*_estaciones_clusters.csv`) y registro formal de entrada con `mlflow.log_input`.
+- `config/`: Archivo JSON (`*_config.json`) con hiperparámetros, características, semilla, versión de datos y resumen de métricas.
+
+### Justificación operativa y de negocio del modelo seleccionado (P3)
+
+Se selecciona **`P3_kmeans_k5_espacial` (K-Means con $k=5$)** como modelo candidato para pasar a producción (`mibici-equipo36-p3-grupos@champion`), y **`P3_kmeans_k4_espacial` (K-Means con $k=4$)** como `@challenger`, por las siguientes razones técnicas y operativas:
+1. **Superioridad en cohesión y separación interna**: Obtuvo el mayor **Silhouette Score (`0.2721`, +17.1% respecto al baseline `k=3` y +359% respecto a las reglas de intensidad)**, el menor **Davies-Bouldin (`1.1990`, -10.9% respecto al baseline)** y el mayor **Calinski-Harabasz (`138.55`, +17.6%)**.
+2. **Equilibrio operativo de cuadrillas y zonas de rebalanceo**: Mientras que `k=3` concentra 284 estaciones en un solo macro-grupo heterogéneo, `k=5` particiona la red principal en **cuatro grupos operativos altamente balanceados (128, 133, 106 y 102 estaciones)** más el corredor periférico/especializado de **15 estaciones** (Zapopan Norte / Periférico). Esto permite asignar rutas y políticas diferenciadas (emisoras residenciales matutinas, atractoras laborales/comerciales, vocación recreativa de fin de semana y alta rotación central) sin sobrecargar una sola zona logística.
+3. **Estabilidad y bajo costo computacional**: El pipeline `StandardScaler + KMeans(k=5)` entrena e infiere sobre las 484 estaciones en menos de 0.2 segundos de CPU, garantizando determinismo (`random_seed=42`) y menor complejidad paramétrica frente a mezclas gaussianas (`GMM`), cuyas matrices de covarianza penalizan el BIC (`6712.01` y `7531.33`) sin mejorar la separación geométrica.
+
+## 10. Ingesta desde MLflow Projects (declarada, pendiente de validación integral)
 
 ## 10. Ingesta desde MLflow Projects (validada)
 
@@ -270,6 +357,17 @@ En GitHub, configurar **base** `feat/mlflow-project` y **compare** `feat/p1-fina
 | Costos de entrenamiento | No se compararon formalmente los tiempos de 100 vs. 300 árboles. |
 | Configuración | Revisar centralización de fechas y rutas portables. |
 | Reproducción del Registry en otros equipos | Requiere infraestructura y artefactos accesibles, o automatización de registro. |
+| P1 Random Forest, 100 árboles | **Validado** mediante MLflow Projects. |
+| P1 Random Forest, 300 árboles | Ejecutado durante la búsqueda; MAE de validación observado: 5.0110. |
+| Baseline P1 desde MLflow Projects | Disponible en el coordinador; pendiente de validación específica. |
+| P3 Clustering desde `train` | **Validado** (baseline por reglas, K-Means `k=3,4,5`, GMM `full`/`diag`, búsqueda con *nested runs*, `log_model` con `signature` e `input_example`). |
+| P2 desde `train` | Pendiente de integración en su rama correspondiente. |
+| Ingesta mediante `mlflow run` | Declarada; pendiente de prueba integral. |
+| Entorno automático | `python_env.yaml` existe, pero su reconstrucción sin `--env-manager local` no está validada. |
+| Búsqueda de hiperparámetros | Implementada con corridas anidadas y recuperación sin reentrenar. |
+| Registro de modelos | Pendiente de usar el formato MLflow Model, firma, ejemplo de entrada, versiones y alias `champion`. |
+| Configuración | Revisar centralización de fechas y parámetros; evitar rutas específicas de un integrante. |
+| Documentación | Mantener esta guía actualizada con cada funcionalidad validada. |
 
 ## 13. Solución rápida de problemas
 
