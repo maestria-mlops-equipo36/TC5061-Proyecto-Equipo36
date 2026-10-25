@@ -33,6 +33,7 @@ def ejecutar_busqueda_p2():
 
         mejor_val_f1 = -1.0
         mejor_cfg = None
+        mejor_run_id = None
 
         for cfg in configuraciones:
             run_name_hijo = f"P2_LR_C{cfg['C']}_{cfg['solver']}"
@@ -43,10 +44,12 @@ def ejecutar_busqueda_p2():
                     solver=cfg["solver"],
                     penalty=cfg["penalty"],
                     stage_of_work="candidate",
+                    evaluar_test=False,
                 )
                 if val_f1 is not None and val_f1 > mejor_val_f1:
                     mejor_val_f1 = val_f1
                     mejor_cfg = cfg
+                    mejor_run_id = mlflow.active_run().info.run_id
 
         mlflow.log_metric("best_val_f1_macro", mejor_val_f1)
         if mejor_cfg:
@@ -54,18 +57,80 @@ def ejecutar_busqueda_p2():
             mlflow.log_param("best_solver", mejor_cfg["solver"])
             print(f"Best config found: C={mejor_cfg['C']} (Val F1: {mejor_val_f1:.4f})")
 
-    # Promoción del mejor modelo al Model Registry
+    # ---------------------------------------------------------
+    # Evaluación final y registro del modelo ganador
+    # ---------------------------------------------------------
+
+    if mejor_cfg is None:
+        raise RuntimeError(
+            "No se encontró una configuración válida para P2."
+        )
+
+    print("\nEvaluación final del mejor modelo P2")
+    print(
+        f"Mejor configuración: C={mejor_cfg['C']}, "
+        f"solver={mejor_cfg['solver']}, "
+        f"penalty={mejor_cfg['penalty']}"
+    )
+
+    # Ejecutar únicamente el modelo ganador sobre Test
+    with mlflow.start_run(run_name="P2_Champion_Final") as final_run:
+
+        p2_clasificacion(
+            modelo_tipo="logistic_regression",
+            c_param=mejor_cfg["C"],
+            solver=mejor_cfg["solver"],
+            penalty=mejor_cfg["penalty"],
+            stage_of_work="final",
+            evaluar_test=True,
+        )
+
+        final_run_id = final_run.info.run_id
+
+    # ---------------------------------------------------------
+    # Promoción del modelo ganador al Model Registry
+    # ---------------------------------------------------------
+
     client = mlflow.tracking.MlflowClient()
     model_name = "mibici-equipo36-p2-riesgo"
-    try:
-        latest_versions = client.get_latest_versions(model_name)
-        if latest_versions:
-            best_ver = latest_versions[-1].version
-            client.set_registered_model_alias(name=model_name, alias="champion", version=best_ver)
-            print(f"Modelo '{model_name}' versión {best_ver} promovido al alias 'champion' (Producción)")
-    except Exception as e:
-        print(f"Nota sobre Model Registry: {e}")
 
+    try:
+        versions = client.search_model_versions(
+            f"name='{model_name}'"
+        )
+
+        best_version = next(
+            (
+                version
+                for version in versions
+                if version.run_id == final_run_id
+            ),
+            None,
+        )
+
+        if best_version is None:
+            raise RuntimeError(
+                "No se encontró la versión registrada "
+                f"para el run_id {final_run_id}."
+            )
+
+        client.set_registered_model_alias(
+            name=model_name,
+            alias="champion",
+            version=best_version.version,
+        )
+
+        print(
+            f"\nChampion P2 registrado correctamente:\n"
+            f"Modelo: {model_name}\n"
+            f"Versión: {best_version.version}\n"
+            f"Run ID: {final_run_id}\n"
+            f"F1-macro validación: {mejor_val_f1:.4f}"
+        )
+
+    except Exception as e:
+        print(f"ERROR al promover el Champion P2: {e}")
+        raise
 
 if __name__ == "__main__":
     ejecutar_busqueda_p2()

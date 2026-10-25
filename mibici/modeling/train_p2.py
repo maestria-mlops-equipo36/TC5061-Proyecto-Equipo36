@@ -88,6 +88,7 @@ def p2_clasificacion(
     solver="lbfgs",
     penalty="l2",
     stage_of_work="candidate",
+    evaluar_test=True,
 ):
     """Función unificada compatible con CLI de run_project y MLproject."""
     mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
@@ -168,6 +169,14 @@ def p2_clasificacion(
         y_pred_val = modelo.predict(X_val)
         val_f1 = f1_score(y_val, y_pred_val, average="macro")
         mlflow.log_metric("val_f1_macro", val_f1)
+        # Durante la búsqueda no utilizar el conjunto Test
+        if not evaluar_test:
+            print(
+                f"Candidato P2 evaluado en validación: "
+                f"C={c_param}, solver={solver}, "
+                f"val_f1_macro={val_f1:.4f}"
+            )
+            return val_f1
 
         # Prueba
         y_pred_test = modelo.predict(X_test)
