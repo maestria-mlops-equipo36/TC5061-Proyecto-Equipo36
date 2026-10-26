@@ -69,24 +69,43 @@ def main():
     print(f"Pregunta: {args.question}")
     print(f"Modelo: {args.model}")
 
+    
+
     if args.question == "p1":
         from mibici.modeling.train import p1_regresion
 
         print(f"Número de árboles: {args.n_estimators}")
 
-        if args.model not in ["rf", "baseline"]:
-            parser.error("Para P1 utiliza 'rf' o 'baseline'.")
+        if args.model not in ["rf", "baseline", "search"]:
+            parser.error("Para P1 utiliza 'rf', 'baseline' o 'search'.")
 
-        modelo_tipo = (
-            "random_forest" if args.model == "rf" else "baseline"
-        )
+        if args.model == "search":
+            import os
+            import subprocess
+            import sys
 
-        p1_regresion(
-            modelo_tipo=modelo_tipo,
-            n_estimators=args.n_estimators,
-            max_depth=args.max_depth,
-            min_samples_leaf=args.min_samples_leaf,
-        )
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "mibici.modeling.search_p1",
+                    "--tracking-uri",
+                    os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000"),
+                ],
+                check=True,
+            )
+        else:
+            modelo_tipo = (
+                "random_forest" if args.model == "rf" else "baseline"
+            )
+
+            p1_regresion(
+                modelo_tipo=modelo_tipo,
+                n_estimators=args.n_estimators,
+                max_depth=args.max_depth,
+                min_samples_leaf=args.min_samples_leaf,
+            )
+
     
     elif args.question == "p2":
         from mibici.modeling.search_p2 import ejecutar_busqueda_p2
