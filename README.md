@@ -286,14 +286,14 @@ El alias `champion` identifica la versión seleccionada de cada modelo y permite
 **Registro de modelos:**
 
 ```bash
-MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+MLFLOW_TRACKING_URI=http://127.0.0.0:5000 \
 python -m mibici.modeling.register_models
 ```
 
 **Verificación del registro:**
 
 ```bash
-MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+MLFLOW_TRACKING_URI=http://127.0.0.0:5000 \
 python -m mibici.modeling.verify_registry
 ```
 
