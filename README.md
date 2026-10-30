@@ -341,3 +341,87 @@ git pull origin main
 ## 9. Licencia
 
 Este repositorio incluye una licencia MIT (ver [`LICENSE`](LICENSE)). Los datos originales pueden estar sujetos a condiciones de uso distintas: consultar las condiciones publicadas por MiBici.
+
+## 10. Validación de calidad e integridad de datos con DeepChecks
+
+El proyecto integra suites automatizadas de validación de datos y detección de *Data Drift* mediante **DeepChecks** (`mibici/validation/deepchecks_suite.py` y `tests/test_deepchecks.py`), abarcando las tres preguntas de negocio (P1 Regresión, P2 Clasificación y P3 Clustering).
+
+### 10.1 Chequeos implementados
+
+Se diseñaron dos suites complementarias con condiciones cuantitativas explícitas:
+
+| Suite | Chequeo DeepChecks | Condición configurada | Propósito técnico |
+|---|---|---|---|
+| **Integridad de Datos** (`SingleDatasetCheck`) | `PercentOfNulls` | `<= 0%` de nulos por columna | Garantizar ausencia de valores faltantes tras la limpieza e imputación |
+| **Integridad de Datos** | `DataDuplicates` | `<= 0%` (P2/P3) y `<= 2%` (P1) | Detectar registros duplicados exactos en las matrices de características |
+| **Integridad de Datos** | `IsSingleValue` | Ninguna columna constante | Evitar variables degeneradas sin varianza informativa |
+| **Integridad de Datos** | `MixedNulls` | `0` tipos de nulos mezclados | Prevenir coexistencia de `NaN`, `None` o cadenas vacías |
+| **Integridad de Datos** | `MixedDataTypes` | Sin tipos raros (`1%–50%`) | Verificar pureza de tipos numéricos y categóricos por columna |
+| **Integridad de Datos** | `StringMismatch` | Sin variantes de formato | Asegurar consistencia en variables de texto/identificadores |
+| **Integridad de Datos** | `FeatureFeatureCorrelation` | Pares con $\|r\| > 0.98$ acotados | Identificar colinealidad extrema o variables redundantes |
+| **Integridad de Datos** | `FeatureLabelCorrelation` | `PPS < 0.95` en todas las variables | Descartar fuga directa de la etiqueta (*target leakage*) |
+| **Train-Test y Drift** (`TrainTestCheck`) | `TrainTestSamplesMix` | Filtración `<= 5%` | Verificar separación entre particiones de entrenamiento y prueba |
+| **Train-Test y Drift** | `DatasetsSizeComparison` | `len(train) >= len(test)` | Validar proporción adecuada entre conjuntos de entrenamiento y prueba |
+| **Train-Test y Drift** | `NewCategoryTrainTest` | Categorías nuevas `<= 5%` | Detectar estaciones o categorías en prueba no observadas en entrenamiento |
+| **Train-Test y Drift** | `FeatureDrift` | Puntaje de deriva `< 0.35` | Cuantificar *covariate shift* entre entrenamiento y prueba |
+| **Train-Test y Drift** | `LabelDrift` | Puntaje de deriva `< 0.35` | Cuantificar cambios en la distribución de la variable objetivo (`viajes_iniciados` / `en_riesgo`) |
+| **Train-Test y Drift** | `MultivariateDrift` | Deriva global `< 0.40` | Evaluar deriva conjunta mediante clasificador de dominio |
+
+### 10.2 Instrucciones de ejecución
+
+#### a) Ejecutar pruebas automatizadas de DeepChecks con PyTest
+
+Evalúa tanto casos normales (datasets íntegros y sin drift) como casos límite con anomalías inyectadas (valores faltantes, duplicados, columnas constantes, tipos mezclados, *Feature Drift*, *Label Drift*, fuga de muestras y categorías nuevas en prueba):
+
+```bash
+python -m pytest tests/test_deepchecks.py -v
+```
+
+#### b) Generar reportes interactivos HTML y resumen sobre datos procesados
+
+Ejecuta las suites completas sobre `data/processed/viajes_limpios.parquet`, `data/processed/estaciones.parquet` y `data/processed/features_p3_estaciones.parquet`:
+
+```bash
+python -m mibici.validation.deepchecks_suite
+```
+
+Este comando exporta:
+- `reports/deepchecks_p1_integridad_drift.html`: Reporte interactivo de integridad y drift para P1 (Regresión).
+- `reports/deepchecks_p2_integridad_drift.html`: Reporte interactivo de integridad y drift para P2 (Clasificación).
+- `reports/deepchecks_p3_integridad.html`: Reporte interactivo de integridad para P3 (Clustering).
+- `reports/deepchecks_summary.json`: Resumen estructurado de todos los chequeos y condiciones evaluadas.
+- `reports/figures/deepchecks_resumen_validacion.png`: Gráfica consolidada de resultados y puntajes de deriva.
+
+### 10.3 Hallazgos y evidencia de ejecución
+
+1. **Integridad de datos (P1, P2 y P3):** 0% de valores faltantes, 0% de registros duplicados, 0 columnas constantes y 0 mezclas de tipos en las tres tablas procesadas.
+2. **Análisis de colinealidad:** En P3, al evaluar la tabla completa se detectó colinealidad superior a `0.99` entre `salidas_totales`, `llegadas_totales` y `total_viajes` (dado que `total_viajes = salidas + llegadas`), lo que valida la decisión de diseño de utilizar únicamente proporciones normalizadas (`P3_FEATURE_COLS_ESPACIAL`) en el entrenamiento del clustering. En P1 se observa correlación natural esperada entre las ventanas móviles superpuestas (`promedio_7_dias`, `promedio_14_dias` y `promedio_28_dias`).
+3. **Análisis de Data Drift (Train vs Test):**
+   - Las variables históricas de demanda (`viajes_dia_anterior`, `promedio_7_dias`, `promedio_14_dias`, `viajes_hace_7_dias`) presentan puntajes de deriva bajos (`<= 0.11`), muy por debajo del umbral crítico (`0.35`).
+   - El *Label Drift* en `viajes_iniciados` (estadístico KS = `0.11`) confirma estabilidad en la distribución de demanda entre el periodo de entrenamiento y el de prueba.
+   - La única variable con deriva estructural esperada es `mes` (`0.73`), producto directo del corte estrictamente cronológico del proyecto (entrenamiento de octubre 2025 a junio 2026 frente a prueba en septiembre 2026).
+
+**Evidencia de ejecución en terminal (`pytest tests/test_deepchecks.py -v`):**
+
+```text
+tests/test_deepchecks.py::test_deepchecks_integridad_datos_limpios PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_valores_faltantes PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_filas_duplicadas PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_columna_constante PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_tipos_mezclados PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_colinealidad_extrema PASSED
+tests/test_deepchecks.py::test_deepchecks_train_test_sin_drift PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_feature_drift_severo PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_label_drift_severo PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_fuga_muestras_train_test PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_categorias_nuevas_en_test PASSED
+tests/test_deepchecks.py::test_ejecutar_validacion_completa_p1_y_exportar_html PASSED
+tests/test_deepchecks.py::test_ejecutar_validacion_completa_p2_sintetico PASSED
+tests/test_deepchecks.py::test_ejecutar_validacion_completa_p3_sintetico PASSED
+tests/test_deepchecks.py::test_deepchecks_datos_reales_p3_si_existen PASSED
+```
+
+**Evidencia visual de las suites de integridad y deriva de características:**
+
+![Resumen de Validación y Drift con DeepChecks](reports/figures/deepchecks_resumen_validacion.png)
+

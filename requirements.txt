@@ -186,3 +186,10 @@ websocket-client==1.9.2
 Werkzeug==3.1.9
 yarl==1.25.1
 zipp==4.1.1
+category-encoders==2.11.2
+deepchecks==0.19.1
+formulaic==1.2.2
+interface-meta==2.0.1
+jsonpickle==4.1.4
+PyNomaly==0.4.0
+python-utils==4.1.4
