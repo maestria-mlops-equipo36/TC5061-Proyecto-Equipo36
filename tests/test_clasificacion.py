@@ -354,10 +354,23 @@ def test_preparar_datos_p2(monkeypatch):
     # La primera observación de cada estación se elimina por los lags
     assert total == (40 - 1) * 2
 
-    # Verificar proporciones de partición
-    assert len(X_train) == int(total * 0.70)
-    assert len(X_val) == int(total * 0.85) - int(total * 0.70)
-    assert len(X_test) == total - int(total * 0.85)
+    # Verificar proporciones según ventanas temporales completas
+    # Se generan 40 ventanas para dos estaciones.
+    # La primera ventana de cada estación se elimina por los lags.
+    n_ventanas = 39
+    n_estaciones = 2
+
+    corte_train = int(n_ventanas * 0.70)
+    corte_val = int(n_ventanas * 0.85)
+
+    ventanas_train = corte_train
+    ventanas_val = corte_val - corte_train
+    ventanas_test = n_ventanas - corte_val
+
+    # Cada ventana contiene una observación por estación
+    assert len(X_train) == ventanas_train * n_estaciones
+    assert len(X_val) == ventanas_val * n_estaciones
+    assert len(X_test) == ventanas_test * n_estaciones
 
     # Verificar las características utilizadas por el modelo
     columnas_esperadas = [
@@ -384,7 +397,6 @@ def test_preparar_datos_p2(monkeypatch):
     assert not X_test.isna().any().any()
 
 
-#REVISAR ESTA PRUEBA
 def test_separacion_temporal_estricta_p2(monkeypatch):
     """Verifica que entrenamiento, validación y prueba no compartan ventanas."""
 
@@ -459,4 +471,83 @@ def test_separacion_temporal_estricta_p2(monkeypatch):
     assert ventanas_val.max() < ventanas_test.min(), (
         "Fuga temporal: validación y prueba comparten "
         "al menos una ventana temporal."
+    )
+
+
+def test_reproducibilidad_entrenamiento_p2():
+    """Verifica predicciones y métricas reproducibles con la misma semilla."""
+
+    # Generar datos sintéticos reproducibles
+    rng = np.random.default_rng(RANDOM_SEED)
+    n = 200
+
+    X = pd.DataFrame({
+        "capacidad": rng.integers(10, 40, size=n),
+        "hora": rng.integers(0, 24, size=n),
+        "dia_semana": rng.integers(0, 7, size=n),
+        "es_fin_de_semana": rng.integers(0, 2, size=n),
+        "lag_salidas": rng.integers(0, 20, size=n),
+        "lag_llegadas": rng.integers(0, 20, size=n),
+        "lag_flujo_neto": rng.integers(-15, 16, size=n),
+    })
+
+    # Generar etiquetas binarias a partir de las características
+    y = (
+        (X["lag_salidas"] >= 12)
+        | (X["lag_flujo_neto"].abs() >= 10)
+    ).astype(int)
+
+    # Separar datos de entrenamiento y prueba
+    X_train = X.iloc[:160]
+    X_test = X.iloc[160:]
+
+    y_train = y.iloc[:160]
+    y_test = y.iloc[160:]
+
+    # Utilizar los mismos hiperparámetros que el modelo P2
+    parametros = {
+        "C": 1.0,
+        "solver": "lbfgs",
+        "penalty": "l2",
+        "class_weight": "balanced",
+        "max_iter": 500,
+        "random_state": RANDOM_SEED,
+    }
+
+    # Entrenar dos modelos independientes
+    modelo_1 = LogisticRegression(**parametros)
+    modelo_2 = LogisticRegression(**parametros)
+
+    modelo_1.fit(X_train, y_train)
+    modelo_2.fit(X_train, y_train)
+
+    # Obtener predicciones y probabilidades
+    predicciones_1 = modelo_1.predict(X_test)
+    predicciones_2 = modelo_2.predict(X_test)
+
+    probabilidades_1 = modelo_1.predict_proba(X_test)
+    probabilidades_2 = modelo_2.predict_proba(X_test)
+
+    # Verificar que las predicciones sean idénticas
+    np.testing.assert_array_equal(
+        predicciones_1,
+        predicciones_2,
+    )
+
+    # Verificar que las probabilidades sean equivalentes
+    np.testing.assert_allclose(
+        probabilidades_1,
+        probabilidades_2,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+    # Comparar la métrica utilizada para evaluar P2
+    f1_1 = f1_score(y_test, predicciones_1, average="macro")
+    f1_2 = f1_score(y_test, predicciones_2, average="macro")
+
+    assert f1_1 == pytest.approx(
+        f1_2,
+        rel=1e-12,
+        abs=1e-12,
     )
