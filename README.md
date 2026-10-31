@@ -341,3 +341,17 @@ git pull origin main
 ## 9. Licencia
 
 Este repositorio incluye una licencia MIT (ver [`LICENSE`](LICENSE)). Los datos originales pueden estar sujetos a condiciones de uso distintas: consultar las condiciones publicadas por MiBici.
+
+## 10. Pruebas automatizadas, validación de datos y chequeos de seguridad (Actividad 7)
+
+Para garantizar la calidad de código, la reproducibilidad y la seguridad del repositorio, se cuenta con una suite centralizada de pruebas y auditorías ejecutables con PyTest y herramientas CLI especializadas.
+
+### 10.1 Ejecución completa con PyTest
+Ejecuta la suite integral de pruebas del proyecto (unitarias, casos límite, reproducibilidad, validación de datos y seguridad):
+
+```bash
+# Ejecutar todas las pruebas del repositorio
+python -m pytest tests/ -v
+
+# Ejecutar únicamente la suite de seguridad
+python -m pytest tests/test_security.py -v
