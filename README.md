@@ -269,6 +269,97 @@ En MLflow abrir el experimento `mibici-equipo36` y comprobar al menos un run **p
 
 > **Importante:** las instrucciones reflejan ejecuciones compartidas por el equipo, pero la presencia actual de cada script y run en `main` debe verificarse en GitHub. Los archivos ignorados (datos, modelos, credenciales y tracking) no deben agregarse para aparentar que están versionados.
 
+### 5.10 Model Registry y ciclo de vida de los modelos
+
+El proyecto utiliza **MLflow Model Registry** para gestionar los modelos seleccionados de las tres preguntas de negocio (P1, P2 y P3). Cada modelo se registra con un nombre consistente, una versión y metadatos de linaje que permiten relacionarlo con su entrenamiento y los datos utilizados.
+
+Los modelos registrados son:
+
+| Pregunta | Modelo registrado | Alias |
+|---|---|---|
+| P1 — Regresión | `mibici-equipo36-p1-demanda` | `champion` |
+| P2 — Clasificación | `mibici-equipo36-p2-riesgo` | `champion` |
+| P3 — Clustering | `mibici-equipo36-p3-grupos` | `champion` |
+
+El alias `champion` identifica la versión seleccionada de cada modelo y permite acceder a ella sin depender de un número de versión específico. Su asignación no implica que exista un servicio de inferencia desplegado.
+
+**Registro de modelos:**
+
+```bash
+MLFLOW_TRACKING_URI=http://127.0.0.0:5000 \
+python -m mibici.modeling.register_models
+```
+
+**Verificación del registro:**
+
+```bash
+MLFLOW_TRACKING_URI=http://127.0.0.0:5000 \
+python -m mibici.modeling.verify_registry
+```
+
+Durante las pruebas locales se verificó el registro de los tres modelos y su carga mediante el alias `champion`.
+
+Para consultar las configuraciones seleccionadas, el proceso de registro, la verificación de firmas y metadatos, y las URI de carga de los modelos, consultar la **sección 15: Model Registry y ciclo de vida de los modelos** en [`docs/README.md`](docs/README.md).
+
+Los modelos registrados y sus artefactos permanecen en el servidor MLflow utilizado durante las pruebas; no se almacenan directamente en GitHub.
+
+### 5.11 Pruebas automatizadas con PyTest
+
+El proyecto incorpora pruebas automatizadas mediante **PyTest** para validar las funciones principales de los tres problemas de negocio, incluyendo casos normales, situaciones límite, integridad de datos y reproducibilidad de los entrenamientos.
+
+Las pruebas se encuentran organizadas en la carpeta `tests/`:
+
+| Archivo | Funcionalidad evaluada |
+|---|---|
+| `test_data.py` | Validaciones generales de datos, configuraciones y características |
+| `test_regresion.py` | P1: demanda diaria, características históricas, validaciones y reproducibilidad de Random Forest |
+| `test_clasificacion.py` | P2: cálculo de riesgo, separación temporal, prevención de fuga de información y reproducibilidad de regresión logística |
+| `test_clustering.py` | P3: perfiles de estaciones, casos límite, entrenamiento de K-Means y GMM, y reproducibilidad |
+
+#### Ejecución de las pruebas
+
+Desde la raíz del repositorio, con el entorno virtual activado y las dependencias instaladas:
+
+```bash
+python -m pytest tests/ -v
+```
+
+También es posible ejecutar las pruebas de un problema específico:
+
+```bash
+python -m pytest tests/test_regresion.py -v
+python -m pytest tests/test_clasificacion.py -v
+python -m pytest tests/test_clustering.py -v
+```
+
+Las pruebas utilizan principalmente datos sintéticos para comprobar resultados conocidos sin depender de los archivos CSV originales ni de un servidor MLflow activo.
+
+#### Reproducibilidad
+
+Se incorporaron pruebas que entrenan dos modelos independientes utilizando los mismos datos, hiperparámetros y semilla aleatoria (`RANDOM_SEED = 42`).
+
+Se verifica la consistencia de predicciones y métricas en:
+
+- **P1:** Random Forest Regressor.
+- **P2:** Logistic Regression.
+- **P3:** K-Means y Gaussian Mixture Model.
+
+En clustering, las agrupaciones se comparan mediante el *Adjusted Rand Index*, evitando depender de los números arbitrarios asignados a los clusters.
+
+#### Resultados de ejecución
+
+Las pruebas se ejecutaron localmente utilizando Python 3.12 y PyTest 9.1.1.
+
+**Resultado obtenido:**
+
+```text
+34 passed, 2 warnings in 3.22s
+```
+
+Las dos advertencias corresponden a la deprecación del parámetro `penalty` de `LogisticRegression` en scikit-learn. No se registraron pruebas fallidas.
+
+Este resultado valida los casos cubiertos por la suite, pero no sustituye las verificaciones de integración completa, calidad de datos reales o seguridad del repositorio.
+
 ## 6. Organización del proyecto
 
 ```text
@@ -336,7 +427,11 @@ git pull origin main
 
 **Implementado y ejecutado localmente:** estructura Cookiecutter Data Science, validación e ingesta de datos, ingeniería de características, P1 (baseline y Random Forest), P2 (DummyClassifier y LogisticRegression), P3 (K-Means k=3/k=4, GMM k=4 y referencia por reglas), con evidencias de tracking en MLflow.
 
-**Pendiente de comprobar antes de entrega:** que todos los scripts y cambios estén integrados en `main`; que los runs correspondientes incluyan parámetros, métricas, etiquetas y artefactos; y que la documentación y dependencias coincidan con el código de la versión entregada.
+Se implementó **MLflow Model Registry** para registrar y gestionar los modelos seleccionados de P1, P2 y P3 mediante versiones y aliases `champion`, incluyendo scripts para verificar su registro y carga.
+
+También se incorporaron **pruebas automatizadas con PyTest** para validar las funciones principales de los tres problemas, incluyendo casos límite, separación temporal y reproducibilidad de los entrenamientos. La ejecución local de la suite completa obtuvo **34 pruebas aprobadas, sin fallos**.
+
+**Pendiente de comprobar antes de entrega:** completar las verificaciones de calidad de datos con DeepChecks y los chequeos básicos de seguridad; confirmar que todos los scripts y cambios estén integrados en `main`; verificar que los runs correspondientes incluyan parámetros, métricas, etiquetas y artefactos; y asegurar que la documentación y las dependencias coincidan con el código de la versión entregada.
 
 ## 9. Licencia
 
