@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from sklearn.metrics import mean_absolute_error
 
@@ -73,3 +74,47 @@ def test_reproducibilidad_random_forest_p1():
         rtol=1e-10,
         atol=1e-12,
     )
+def test_random_forest_dataset_vacio():
+    """
+    Verifica que el entrenamiento rechace un dataset vacío.
+    """
+
+    X = pd.DataFrame(columns=[
+        "estacion_id",
+        "dia_semana",
+        "viajes_dia_anterior",
+        "promedio_7_dias",
+    ])
+
+    y = pd.Series(dtype=float)
+
+    with pytest.raises(ValueError):
+        entrenar_random_forest_p1(
+            X_train=X,
+            y_train=y,
+            n_estimators=10,
+            random_seed=42,
+        )
+
+
+def test_random_forest_numero_arboles_invalido():
+    """
+    Verifica que el modelo rechace n_estimators=0.
+    """
+
+    X = pd.DataFrame({
+        "estacion_id": [1, 2, 3, 4],
+        "dia_semana": [0, 1, 2, 3],
+        "viajes_dia_anterior": [10, 15, 20, 25],
+        "promedio_7_dias": [12, 14, 19, 23],
+    })
+
+    y = pd.Series([11, 16, 21, 26])
+
+    with pytest.raises(ValueError):
+        entrenar_random_forest_p1(
+            X_train=X,
+            y_train=y,
+            n_estimators=0,
+            random_seed=42,
+        )
