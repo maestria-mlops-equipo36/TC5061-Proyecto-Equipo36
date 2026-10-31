@@ -24,7 +24,6 @@ from sklearn.preprocessing import StandardScaler
 from contextlib import nullcontext
 from mlflow.models import infer_signature
 from tempfile import TemporaryDirectory
-from mlflow.models import infer_signature
 
 import typer
 
@@ -334,6 +333,34 @@ def p3_clustering(
 
         logger.success(f"Run de MLFlow finalizado exitosamente: {run_name}")
 
+def entrenar_random_forest_p1(
+    X_train,
+    y_train,
+    n_estimators=100,
+    max_depth=12,
+    min_samples_leaf=5,
+    random_seed=RANDOM_SEED,
+):
+    """
+    Entrena un Random Forest para P1 con una semilla controlada.
+
+    Permite ejecutar pruebas de reproducibilidad sin depender
+    de MLflow ni de los archivos históricos de MiBici.
+    """
+
+    model = RandomForestRegressor(
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        min_samples_leaf=min_samples_leaf,
+        random_state=random_seed,
+        n_jobs=-1,
+    )
+
+    model.fit(X_train, y_train)
+
+    return model
+
+
 @app.command()
 def p1_regresion(
     viajes_path: Path = PROCESSED_DATA_DIR / "viajes_limpios.parquet",
@@ -437,15 +464,15 @@ def p1_regresion(
             f"profundidad={max_depth}, "
             f"min_samples_leaf={min_samples_leaf}."
         )
-        model = RandomForestRegressor(
+
+        model = entrenar_random_forest_p1(
+            X_train=X_train,
+            y_train=y_train,
             n_estimators=n_estimators,
             max_depth=max_depth,
             min_samples_leaf=min_samples_leaf,
-            random_state=RANDOM_SEED,
-            n_jobs=-1,
         )
 
-        model.fit(X_train, y_train)
         y_pred = model.predict(X_val)
 
         # La demanda no puede ser negativa
