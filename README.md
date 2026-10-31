@@ -269,6 +269,97 @@ En MLflow abrir el experimento `mibici-equipo36` y comprobar al menos un run **p
 
 > **Importante:** las instrucciones reflejan ejecuciones compartidas por el equipo, pero la presencia actual de cada script y run en `main` debe verificarse en GitHub. Los archivos ignorados (datos, modelos, credenciales y tracking) no deben agregarse para aparentar que están versionados.
 
+### 5.10 Model Registry y ciclo de vida de los modelos
+
+El proyecto utiliza **MLflow Model Registry** para gestionar los modelos seleccionados de las tres preguntas de negocio (P1, P2 y P3). Cada modelo se registra con un nombre consistente, una versión y metadatos de linaje que permiten relacionarlo con su entrenamiento y los datos utilizados.
+
+Los modelos registrados son:
+
+| Pregunta | Modelo registrado | Alias |
+|---|---|---|
+| P1 — Regresión | `mibici-equipo36-p1-demanda` | `champion` |
+| P2 — Clasificación | `mibici-equipo36-p2-riesgo` | `champion` |
+| P3 — Clustering | `mibici-equipo36-p3-grupos` | `champion` |
+
+El alias `champion` identifica la versión seleccionada de cada modelo y permite acceder a ella sin depender de un número de versión específico. Su asignación no implica que exista un servicio de inferencia desplegado.
+
+**Registro de modelos:**
+
+```bash
+MLFLOW_TRACKING_URI=http://127.0.0.0:5000 \
+python -m mibici.modeling.register_models
+```
+
+**Verificación del registro:**
+
+```bash
+MLFLOW_TRACKING_URI=http://127.0.0.0:5000 \
+python -m mibici.modeling.verify_registry
+```
+
+Durante las pruebas locales se verificó el registro de los tres modelos y su carga mediante el alias `champion`.
+
+Para consultar las configuraciones seleccionadas, el proceso de registro, la verificación de firmas y metadatos, y las URI de carga de los modelos, consultar la **sección 15: Model Registry y ciclo de vida de los modelos** en [`docs/README.md`](docs/README.md).
+
+Los modelos registrados y sus artefactos permanecen en el servidor MLflow utilizado durante las pruebas; no se almacenan directamente en GitHub.
+
+### 5.11 Pruebas automatizadas con PyTest
+
+El proyecto incorpora pruebas automatizadas mediante **PyTest** para validar las funciones principales de los tres problemas de negocio, incluyendo casos normales, situaciones límite, integridad de datos y reproducibilidad de los entrenamientos.
+
+Las pruebas se encuentran organizadas en la carpeta `tests/`:
+
+| Archivo | Funcionalidad evaluada |
+|---|---|
+| `test_data.py` | Validaciones generales de datos, configuraciones y características |
+| `test_regresion.py` | P1: demanda diaria, características históricas, validaciones y reproducibilidad de Random Forest |
+| `test_clasificacion.py` | P2: cálculo de riesgo, separación temporal, prevención de fuga de información y reproducibilidad de regresión logística |
+| `test_clustering.py` | P3: perfiles de estaciones, casos límite, entrenamiento de K-Means y GMM, y reproducibilidad |
+
+#### Ejecución de las pruebas
+
+Desde la raíz del repositorio, con el entorno virtual activado y las dependencias instaladas:
+
+```bash
+python -m pytest tests/ -v
+```
+
+También es posible ejecutar las pruebas de un problema específico:
+
+```bash
+python -m pytest tests/test_regresion.py -v
+python -m pytest tests/test_clasificacion.py -v
+python -m pytest tests/test_clustering.py -v
+```
+
+Las pruebas utilizan principalmente datos sintéticos para comprobar resultados conocidos sin depender de los archivos CSV originales ni de un servidor MLflow activo.
+
+#### Reproducibilidad
+
+Se incorporaron pruebas que entrenan dos modelos independientes utilizando los mismos datos, hiperparámetros y semilla aleatoria (`RANDOM_SEED = 42`).
+
+Se verifica la consistencia de predicciones y métricas en:
+
+- **P1:** Random Forest Regressor.
+- **P2:** Logistic Regression.
+- **P3:** K-Means y Gaussian Mixture Model.
+
+En clustering, las agrupaciones se comparan mediante el *Adjusted Rand Index*, evitando depender de los números arbitrarios asignados a los clusters.
+
+#### Resultados de ejecución
+
+Las pruebas se ejecutaron localmente utilizando Python 3.12 y PyTest 9.1.1.
+
+**Resultado obtenido:**
+
+```text
+34 passed, 2 warnings in 3.22s
+```
+
+Las dos advertencias corresponden a la deprecación del parámetro `penalty` de `LogisticRegression` en scikit-learn. No se registraron pruebas fallidas.
+
+Este resultado valida los casos cubiertos por la suite, pero no sustituye las verificaciones de integración completa, calidad de datos reales o seguridad del repositorio.
+
 ## 6. Organización del proyecto
 
 ```text
@@ -336,8 +427,96 @@ git pull origin main
 
 **Implementado y ejecutado localmente:** estructura Cookiecutter Data Science, validación e ingesta de datos, ingeniería de características, P1 (baseline y Random Forest), P2 (DummyClassifier y LogisticRegression), P3 (K-Means k=3/k=4, GMM k=4 y referencia por reglas), con evidencias de tracking en MLflow.
 
-**Pendiente de comprobar antes de entrega:** que todos los scripts y cambios estén integrados en `main`; que los runs correspondientes incluyan parámetros, métricas, etiquetas y artefactos; y que la documentación y dependencias coincidan con el código de la versión entregada.
+Se implementó **MLflow Model Registry** para registrar y gestionar los modelos seleccionados de P1, P2 y P3 mediante versiones y aliases `champion`, incluyendo scripts para verificar su registro y carga.
+
+También se incorporaron **pruebas automatizadas con PyTest** para validar las funciones principales de los tres problemas, incluyendo casos límite, separación temporal y reproducibilidad de los entrenamientos. La ejecución local de la suite completa obtuvo **34 pruebas aprobadas, sin fallos**.
+
+**Pendiente de comprobar antes de entrega:** completar las verificaciones de calidad de datos con DeepChecks y los chequeos básicos de seguridad; confirmar que todos los scripts y cambios estén integrados en `main`; verificar que los runs correspondientes incluyan parámetros, métricas, etiquetas y artefactos; y asegurar que la documentación y las dependencias coincidan con el código de la versión entregada.
 
 ## 9. Licencia
 
 Este repositorio incluye una licencia MIT (ver [`LICENSE`](LICENSE)). Los datos originales pueden estar sujetos a condiciones de uso distintas: consultar las condiciones publicadas por MiBici.
+
+## 10. Validación de calidad e integridad de datos con DeepChecks
+
+El proyecto integra suites automatizadas de validación de datos y detección de *Data Drift* mediante **DeepChecks** (`mibici/validation/deepchecks_suite.py` y `tests/test_deepchecks.py`), abarcando las tres preguntas de negocio (P1 Regresión, P2 Clasificación y P3 Clustering).
+
+### 10.1 Chequeos implementados
+
+Se diseñaron dos suites complementarias con condiciones cuantitativas explícitas:
+
+| Suite | Chequeo DeepChecks | Condición configurada | Propósito técnico |
+|---|---|---|---|
+| **Integridad de Datos** (`SingleDatasetCheck`) | `PercentOfNulls` | `<= 0%` de nulos por columna | Garantizar ausencia de valores faltantes tras la limpieza e imputación |
+| **Integridad de Datos** | `DataDuplicates` | `<= 0%` (P2/P3) y `<= 2%` (P1) | Detectar registros duplicados exactos en las matrices de características |
+| **Integridad de Datos** | `IsSingleValue` | Ninguna columna constante | Evitar variables degeneradas sin varianza informativa |
+| **Integridad de Datos** | `MixedNulls` | `0` tipos de nulos mezclados | Prevenir coexistencia de `NaN`, `None` o cadenas vacías |
+| **Integridad de Datos** | `MixedDataTypes` | Sin tipos raros (`1%–50%`) | Verificar pureza de tipos numéricos y categóricos por columna |
+| **Integridad de Datos** | `StringMismatch` | Sin variantes de formato | Asegurar consistencia en variables de texto/identificadores |
+| **Integridad de Datos** | `FeatureFeatureCorrelation` | Pares con $\|r\| > 0.98$ acotados | Identificar colinealidad extrema o variables redundantes |
+| **Integridad de Datos** | `FeatureLabelCorrelation` | `PPS < 0.95` en todas las variables | Descartar fuga directa de la etiqueta (*target leakage*) |
+| **Train-Test y Drift** (`TrainTestCheck`) | `TrainTestSamplesMix` | Filtración `<= 5%` | Verificar separación entre particiones de entrenamiento y prueba |
+| **Train-Test y Drift** | `DatasetsSizeComparison` | `len(train) >= len(test)` | Validar proporción adecuada entre conjuntos de entrenamiento y prueba |
+| **Train-Test y Drift** | `NewCategoryTrainTest` | Categorías nuevas `<= 5%` | Detectar estaciones o categorías en prueba no observadas en entrenamiento |
+| **Train-Test y Drift** | `FeatureDrift` | Puntaje de deriva `< 0.35` | Cuantificar *covariate shift* entre entrenamiento y prueba |
+| **Train-Test y Drift** | `LabelDrift` | Puntaje de deriva `< 0.35` | Cuantificar cambios en la distribución de la variable objetivo (`viajes_iniciados` / `en_riesgo`) |
+| **Train-Test y Drift** | `MultivariateDrift` | Deriva global `< 0.40` | Evaluar deriva conjunta mediante clasificador de dominio |
+
+### 10.2 Instrucciones de ejecución
+
+#### a) Ejecutar pruebas automatizadas de DeepChecks con PyTest
+
+Evalúa tanto casos normales (datasets íntegros y sin drift) como casos límite con anomalías inyectadas (valores faltantes, duplicados, columnas constantes, tipos mezclados, *Feature Drift*, *Label Drift*, fuga de muestras y categorías nuevas en prueba):
+
+```bash
+python -m pytest tests/test_deepchecks.py -v
+```
+
+#### b) Generar reportes interactivos HTML y resumen sobre datos procesados
+
+Ejecuta las suites completas sobre `data/processed/viajes_limpios.parquet`, `data/processed/estaciones.parquet` y `data/processed/features_p3_estaciones.parquet`:
+
+```bash
+python -m mibici.validation.deepchecks_suite
+```
+
+Este comando exporta:
+- `reports/deepchecks_p1_integridad_drift.html`: Reporte interactivo de integridad y drift para P1 (Regresión).
+- `reports/deepchecks_p2_integridad_drift.html`: Reporte interactivo de integridad y drift para P2 (Clasificación).
+- `reports/deepchecks_p3_integridad.html`: Reporte interactivo de integridad para P3 (Clustering).
+- `reports/deepchecks_summary.json`: Resumen estructurado de todos los chequeos y condiciones evaluadas.
+- `reports/figures/deepchecks_resumen_validacion.png`: Gráfica consolidada de resultados y puntajes de deriva.
+
+### 10.3 Hallazgos y evidencia de ejecución
+
+1. **Integridad de datos (P1, P2 y P3):** 0% de valores faltantes, 0% de registros duplicados, 0 columnas constantes y 0 mezclas de tipos en las tres tablas procesadas.
+2. **Análisis de colinealidad:** En P3, al evaluar la tabla completa se detectó colinealidad superior a `0.99` entre `salidas_totales`, `llegadas_totales` y `total_viajes` (dado que `total_viajes = salidas + llegadas`), lo que valida la decisión de diseño de utilizar únicamente proporciones normalizadas (`P3_FEATURE_COLS_ESPACIAL`) en el entrenamiento del clustering. En P1 se observa correlación natural esperada entre las ventanas móviles superpuestas (`promedio_7_dias`, `promedio_14_dias` y `promedio_28_dias`).
+3. **Análisis de Data Drift (Train vs Test):**
+   - Las variables históricas de demanda (`viajes_dia_anterior`, `promedio_7_dias`, `promedio_14_dias`, `viajes_hace_7_dias`) presentan puntajes de deriva bajos (`<= 0.11`), muy por debajo del umbral crítico (`0.35`).
+   - El *Label Drift* en `viajes_iniciados` (estadístico KS = `0.11`) confirma estabilidad en la distribución de demanda entre el periodo de entrenamiento y el de prueba.
+   - La única variable con deriva estructural esperada es `mes` (`0.73`), producto directo del corte estrictamente cronológico del proyecto (entrenamiento de octubre 2025 a junio 2026 frente a prueba en septiembre 2026).
+
+**Evidencia de ejecución en terminal (`pytest tests/test_deepchecks.py -v`):**
+
+```text
+tests/test_deepchecks.py::test_deepchecks_integridad_datos_limpios PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_valores_faltantes PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_filas_duplicadas PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_columna_constante PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_tipos_mezclados PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_colinealidad_extrema PASSED
+tests/test_deepchecks.py::test_deepchecks_train_test_sin_drift PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_feature_drift_severo PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_label_drift_severo PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_fuga_muestras_train_test PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_categorias_nuevas_en_test PASSED
+tests/test_deepchecks.py::test_ejecutar_validacion_completa_p1_y_exportar_html PASSED
+tests/test_deepchecks.py::test_ejecutar_validacion_completa_p2_sintetico PASSED
+tests/test_deepchecks.py::test_ejecutar_validacion_completa_p3_sintetico PASSED
+tests/test_deepchecks.py::test_deepchecks_datos_reales_p3_si_existen PASSED
+```
+
+**Evidencia visual de las suites de integridad y deriva de características:**
+
+![Resumen de Validación y Drift con DeepChecks](reports/figures/deepchecks_resumen_validacion.png)
+
