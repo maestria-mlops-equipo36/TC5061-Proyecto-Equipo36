@@ -1,0 +1,162 @@
+Run started:2026-11-01 00:23:35.452668+00:00
+
+Test results:
+>> Issue: [B404:blacklist] Consider possible security implications associated with the subprocess module.
+   Severity: Low   Confidence: High
+   CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_imports.html#b404-import-subprocess
+   Location: mibici/dataset.py:75:8
+74	    if not descarga_exitosa:
+75	        import subprocess
+76	        logger.info("Intentando descarga alternativa mediante curl...")
+
+--------------------------------------------------
+>> Issue: [B607:start_process_with_partial_path] Starting a process with a partial executable path
+   Severity: Low   Confidence: High
+   CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b607_start_process_with_partial_path.html
+   Location: mibici/dataset.py:78:12
+77	        try:
+78	            subprocess.run(
+79	                ["curl", "-s", "-L", "-A", headers["User-Agent"], "-o", str(nomenclatura_file), NOMENCLATURA_URL],
+80	                check=True,
+81	                timeout=30,
+82	            )
+83	            descarga_exitosa = True
+
+--------------------------------------------------
+>> Issue: [B603:subprocess_without_shell_equals_true] subprocess call - check for execution of untrusted input.
+   Severity: Low   Confidence: High
+   CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b603_subprocess_without_shell_equals_true.html
+   Location: mibici/dataset.py:78:12
+77	        try:
+78	            subprocess.run(
+79	                ["curl", "-s", "-L", "-A", headers["User-Agent"], "-o", str(nomenclatura_file), NOMENCLATURA_URL],
+80	                check=True,
+81	                timeout=30,
+82	            )
+83	            descarga_exitosa = True
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: mibici/modeling/baseline_reglas.py:151:12
+150	                mlflow.log_param(k_param, v_param)
+151	            except Exception:
+152	                pass
+153	
+
+--------------------------------------------------
+>> Issue: [B404:blacklist] Consider possible security implications associated with the subprocess module.
+   Severity: Low   Confidence: High
+   CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_imports.html#b404-import-subprocess
+   Location: mibici/modeling/run_project.py:84:12
+83	            import os
+84	            import subprocess
+85	            import sys
+
+--------------------------------------------------
+>> Issue: [B603:subprocess_without_shell_equals_true] subprocess call - check for execution of untrusted input.
+   Severity: Low   Confidence: High
+   CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b603_subprocess_without_shell_equals_true.html
+   Location: mibici/modeling/run_project.py:87:12
+86	
+87	            subprocess.run(
+88	                [
+89	                    sys.executable,
+90	                    "-m",
+91	                    "mibici.modeling.search_p1",
+92	                    "--tracking-uri",
+93	                    os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000"),
+94	                ],
+95	                check=True,
+96	            )
+97	        else:
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: mibici/modeling/search_p3.py:202:8
+201	            mlflow.log_param("n_trials", n_trials)
+202	        except Exception:
+203	            pass
+204	
+
+--------------------------------------------------
+>> Issue: [B404:blacklist] Consider possible security implications associated with the subprocess module.
+   Severity: Low   Confidence: High
+   CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_imports.html#b404-import-subprocess
+   Location: mibici/modeling/train.py:3:0
+2	import json
+3	import subprocess
+4	from pathlib import Path
+
+--------------------------------------------------
+>> Issue: [B607:start_process_with_partial_path] Starting a process with a partial executable path
+   Severity: Low   Confidence: High
+   CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b607_start_process_with_partial_path.html
+   Location: mibici/modeling/train.py:69:17
+68	    try:
+69	        commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("ascii").strip()
+70	        return commit
+
+--------------------------------------------------
+>> Issue: [B603:subprocess_without_shell_equals_true] subprocess call - check for execution of untrusted input.
+   Severity: Low   Confidence: High
+   CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b603_subprocess_without_shell_equals_true.html
+   Location: mibici/modeling/train.py:69:17
+68	    try:
+69	        commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("ascii").strip()
+70	        return commit
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: mibici/modeling/train.py:82:8
+81	                return data.get("dataset_version", "v1")
+82	        except Exception:
+83	            pass
+84	    return "v1"
+
+--------------------------------------------------
+>> Issue: [B110:try_except_pass] Try, Except, Pass detected.
+   Severity: Low   Confidence: High
+   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html
+   Location: mibici/modeling/train.py:192:12
+191	                mlflow.log_param(k_param, v_param)
+192	            except Exception:
+193	                pass
+194	
+
+--------------------------------------------------
+
+Code scanned:
+	Total lines of code: 3503
+	Total lines skipped (#nosec): 0
+	Total potential issues skipped due to specifically being disabled (e.g., #nosec BXXX): 0
+
+Run metrics:
+	Total issues (by severity):
+		Undefined: 0
+		Low: 12
+		Medium: 0
+		High: 0
+	Total issues (by confidence):
+		Undefined: 0
+		Low: 0
+		Medium: 0
+		High: 12
+Files skipped (0):
