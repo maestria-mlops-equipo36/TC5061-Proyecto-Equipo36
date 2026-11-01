@@ -193,3 +193,5 @@ interface-meta==2.0.1
 jsonpickle==4.1.4
 PyNomaly==0.4.0
 python-utils==4.1.4
+bandit==1.9.4
+pip-audit==2.10.1
