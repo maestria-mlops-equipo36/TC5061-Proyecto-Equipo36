@@ -353,7 +353,7 @@ Las pruebas se ejecutaron localmente utilizando Python 3.12 y PyTest 9.1.1.
 **Resultado obtenido:**
 
 ```text
-34 passed, 2 warnings in 3.22s
+56 passed, 2 warnings in 29.84s
 ```
 
 Las dos advertencias corresponden a la deprecación del parámetro `penalty` de `LogisticRegression` en scikit-learn. No se registraron pruebas fallidas.
@@ -429,9 +429,11 @@ git pull origin main
 
 Se implementó **MLflow Model Registry** para registrar y gestionar los modelos seleccionados de P1, P2 y P3 mediante versiones y aliases `champion`, incluyendo scripts para verificar su registro y carga.
 
-También se incorporaron **pruebas automatizadas con PyTest** para validar las funciones principales de los tres problemas, incluyendo casos límite, separación temporal y reproducibilidad de los entrenamientos. La ejecución local de la suite completa obtuvo **34 pruebas aprobadas, sin fallos**.
+También se incorporaron **pruebas automatizadas con PyTest** para validar las funciones principales de los tres problemas, incluyendo casos límite, separación temporal y reproducibilidad de los entrenamientos. La ejecución local de la suite completa obtuvo **56 pruebas aprobadas, sin fallos y con 2 advertencias**.
 
-**Pendiente de comprobar antes de entrega:** completar las verificaciones de calidad de datos con DeepChecks y los chequeos básicos de seguridad; confirmar que todos los scripts y cambios estén integrados en `main`; verificar que los runs correspondientes incluyan parámetros, métricas, etiquetas y artefactos; y asegurar que la documentación y las dependencias coincidan con el código de la versión entregada.
+**Validaciones completadas:** Se integraron pruebas automatizadas con PyTest, verificaciones de reproducibilidad y casos límite, validaciones de calidad e integridad de datos mediante DeepChecks y chequeos básicos de seguridad con Bandit y pip-audit.
+
+Las contribuciones quedaron registradas mediante ramas, commits y Pull Requests, y fueron integradas en la rama principal `main`.
 
 ## 9. Licencia
 
@@ -535,3 +537,84 @@ python -m pytest tests/ -v
 
 # Ejecutar únicamente la suite de seguridad
 python -m pytest tests/test_security.py -v
+
+```
+
+**Resultado de la ejecución integral:**
+
+```text
+56 passed, 2 warnings in 29.84s
+```
+
+Las pruebas se ejecutaron utilizando Python 3.12.13 y PyTest 9.1.1. Las dos advertencias corresponden a compatibilidad futura de Scikit-learn y no representan fallos de ejecución.
+
+### 11.2 Validación de datos con DeepChecks
+
+Para ejecutar las pruebas automatizadas de integridad y calidad de datos:
+
+```bash
+python -m pytest tests/test_deepchecks.py -v
+```
+
+Para generar los reportes de validación:
+
+```bash
+python -m mibici.validation.deepchecks_suite
+```
+
+Los resultados y evidencias se encuentran documentados en la sección 10 de este README.
+
+### 11.3 Verificaciones básicas de seguridad
+
+El proyecto incorpora cuatro pruebas automatizadas en `tests/test_security.py`:
+
+1. Verificación de exclusiones de archivos sensibles mediante `.gitignore`.
+2. Comprobación básica de posibles credenciales en archivos de configuración.
+3. Análisis estático de código mediante Bandit.
+4. Auditoría de dependencias mediante pip-audit.
+
+Para ejecutar Bandit:
+
+```bash
+python -m bandit -r mibici -ll -q
+```
+
+Para ejecutar pip-audit:
+
+```bash
+python -m pip_audit --desc
+```
+
+Los reportes de ejecución se encuentran disponibles en:
+
+- `reports/bandit_security_report.txt`
+- `reports/pip_audit_report.txt`
+
+### 11.4 Organización de las pruebas
+
+Las pruebas se encuentran organizadas en el directorio `tests/`, siguiendo la estructura del proyecto.
+
+Se incluyen pruebas de regresión (P1), clasificación (P2), clustering (P3), procesamiento de datos, reproducibilidad, calidad de datos y seguridad.
+
+### 11.5 Evidencias de ejecución
+
+La ejecución integral de PyTest obtuvo **56 pruebas exitosas, sin fallos y con dos advertencias de compatibilidad futura**.
+
+![Ejecución de 56 pruebas automatizadas con PyTest](reports/figures/pytest_56_pruebas_exitosas.png)
+
+La evidencia de las validaciones con DeepChecks se encuentra disponible en:
+
+![Resumen de validación de datos con DeepChecks](reports/figures/deepchecks_resumen_validacion.png)
+
+### 11.6 Trabajo colaborativo
+
+Las funcionalidades y verificaciones fueron desarrolladas mediante ramas independientes y Pull Requests.
+
+Entre las contribuciones integradas se encuentran:
+
+- PR #15: validaciones de calidad de datos con DeepChecks.
+- PR #16: pruebas automatizadas con PyTest.
+- PR #17: reproducibilidad y casos límite.
+- PR #18: verificaciones básicas de seguridad.
+
+Las contribuciones quedaron registradas en el historial de Git y fueron integradas en la rama principal `main`.
