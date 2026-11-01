@@ -489,7 +489,7 @@ Este comando exporta:
 - `reports/deepchecks_summary.json`: Resumen estructurado de todos los chequeos y condiciones evaluadas.
 - `reports/figures/deepchecks_resumen_validacion.png`: Gráfica consolidada de resultados y puntajes de deriva.
 
-### 10.3 Hallazgos y evidencia de ejecución
+### 10.3 Hallazgos
 
 1. **Integridad de datos (P1, P2 y P3):** 0% de valores faltantes, 0% de registros duplicados, 0 columnas constantes y 0 mezclas de tipos en las tres tablas procesadas.
 2. **Análisis de colinealidad:** En P3, al evaluar la tabla completa se detectó colinealidad superior a `0.99` entre `salidas_totales`, `llegadas_totales` y `total_viajes` (dado que `total_viajes = salidas + llegadas`), lo que valida la decisión de diseño de utilizar únicamente proporciones normalizadas (`P3_FEATURE_COLS_ESPACIAL`) en el entrenamiento del clustering. En P1 se observa correlación natural esperada entre las ventanas móviles superpuestas (`promedio_7_dias`, `promedio_14_dias` y `promedio_28_dias`).
@@ -497,30 +497,6 @@ Este comando exporta:
    - Las variables históricas de demanda (`viajes_dia_anterior`, `promedio_7_dias`, `promedio_14_dias`, `viajes_hace_7_dias`) presentan puntajes de deriva bajos (`<= 0.11`), muy por debajo del umbral crítico (`0.35`).
    - El *Label Drift* en `viajes_iniciados` (estadístico KS = `0.11`) confirma estabilidad en la distribución de demanda entre el periodo de entrenamiento y el de prueba.
    - La única variable con deriva estructural esperada es `mes` (`0.73`), producto directo del corte estrictamente cronológico del proyecto (entrenamiento de octubre 2025 a junio 2026 frente a prueba en septiembre 2026).
-
-**Evidencia de ejecución en terminal (`pytest tests/test_deepchecks.py -v`):**
-
-```text
-tests/test_deepchecks.py::test_deepchecks_integridad_datos_limpios PASSED
-tests/test_deepchecks.py::test_deepchecks_detecta_valores_faltantes PASSED
-tests/test_deepchecks.py::test_deepchecks_detecta_filas_duplicadas PASSED
-tests/test_deepchecks.py::test_deepchecks_detecta_columna_constante PASSED
-tests/test_deepchecks.py::test_deepchecks_detecta_tipos_mezclados PASSED
-tests/test_deepchecks.py::test_deepchecks_detecta_colinealidad_extrema PASSED
-tests/test_deepchecks.py::test_deepchecks_train_test_sin_drift PASSED
-tests/test_deepchecks.py::test_deepchecks_detecta_feature_drift_severo PASSED
-tests/test_deepchecks.py::test_deepchecks_detecta_label_drift_severo PASSED
-tests/test_deepchecks.py::test_deepchecks_detecta_fuga_muestras_train_test PASSED
-tests/test_deepchecks.py::test_deepchecks_detecta_categorias_nuevas_en_test PASSED
-tests/test_deepchecks.py::test_ejecutar_validacion_completa_p1_y_exportar_html PASSED
-tests/test_deepchecks.py::test_ejecutar_validacion_completa_p2_sintetico PASSED
-tests/test_deepchecks.py::test_ejecutar_validacion_completa_p3_sintetico PASSED
-tests/test_deepchecks.py::test_deepchecks_datos_reales_p3_si_existen PASSED
-```
-
-**Evidencia visual de las suites de integridad y deriva de características:**
-
-![Resumen de Validación y Drift con DeepChecks](reports/figures/deepchecks_resumen_validacion.png)
 
 ---
 
@@ -599,6 +575,25 @@ Se incluyen pruebas de regresión (P1), clasificación (P2), clustering (P3), pr
 ### 11.5 Evidencias de ejecución
 
 La ejecución integral de PyTest obtuvo **56 pruebas exitosas, sin fallos y con dos advertencias de compatibilidad futura**.
+**Evidencia de ejecución en terminal (`pytest tests/test_deepchecks.py -v`):**
+
+```text
+tests/test_deepchecks.py::test_deepchecks_integridad_datos_limpios PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_valores_faltantes PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_filas_duplicadas PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_columna_constante PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_tipos_mezclados PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_colinealidad_extrema PASSED
+tests/test_deepchecks.py::test_deepchecks_train_test_sin_drift PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_feature_drift_severo PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_label_drift_severo PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_fuga_muestras_train_test PASSED
+tests/test_deepchecks.py::test_deepchecks_detecta_categorias_nuevas_en_test PASSED
+tests/test_deepchecks.py::test_ejecutar_validacion_completa_p1_y_exportar_html PASSED
+tests/test_deepchecks.py::test_ejecutar_validacion_completa_p2_sintetico PASSED
+tests/test_deepchecks.py::test_ejecutar_validacion_completa_p3_sintetico PASSED
+tests/test_deepchecks.py::test_deepchecks_datos_reales_p3_si_existen PASSED
+```
 
 ![Ejecución de 56 pruebas automatizadas con PyTest](reports/figures/pytest_56_pruebas_exitosas.png)
 
