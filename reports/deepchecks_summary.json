@@ -1,0 +1,480 @@
+{
+  "P3_clustering": {
+    "suite_nombre": "P3 Clustering - Integridad de Perfiles de Estaciones",
+    "passed": true,
+    "checks_evaluados": 7,
+    "checks_aprobados": 7,
+    "checks_con_alertas": 0,
+    "resultados": [
+      {
+        "check": "PercentOfNulls",
+        "ejecutado": true,
+        "paso_condiciones": true,
+        "condiciones": [
+          {
+            "nombre": "Percent of null values in each column is not greater than 0%",
+            "categoria": "ConditionCategory.PASS",
+            "detalles": "Passed for 9 relevant columns",
+            "paso": true
+          }
+        ]
+      },
+      {
+        "check": "Data Duplicates",
+        "ejecutado": true,
+        "paso_condiciones": true,
+        "condiciones": [
+          {
+            "nombre": "Duplicate data ratio is less or equal to 0%",
+            "categoria": "ConditionCategory.PASS",
+            "detalles": "Found 0% duplicate data",
+            "paso": true
+          }
+        ]
+      },
+      {
+        "check": "Single Value in Column",
+        "ejecutado": true,
+        "paso_condiciones": true,
+        "condiciones": [
+          {
+            "nombre": "Does not contain only a single value",
+            "categoria": "ConditionCategory.PASS",
+            "detalles": "Passed for 9 relevant columns",
+            "paso": true
+          }
+        ]
+      },
+      {
+        "check": "Mixed Nulls",
+        "ejecutado": true,
+        "paso_condiciones": true,
+        "condiciones": [
+          {
+            "nombre": "Number of different null types is less or equal to 0",
+            "categoria": "ConditionCategory.PASS",
+            "detalles": "Passed for 9 relevant columns",
+            "paso": true
+          }
+        ]
+      },
+      {
+        "check": "Mixed Data Types",
+        "ejecutado": true,
+        "paso_condiciones": true,
+        "condiciones": [
+          {
+            "nombre": "Rare data types in column are either more than 50% or less than 1% of the data",
+            "categoria": "ConditionCategory.PASS",
+            "detalles": "9 columns passed: found 0 columns with negligible types mix, and 9 columns without any types mix",
+            "paso": true
+          }
+        ]
+      },
+      {
+        "check": "String Mismatch",
+        "ejecutado": true,
+        "paso_condiciones": true,
+        "condiciones": [
+          {
+            "nombre": "No string variants",
+            "categoria": "ConditionCategory.PASS",
+            "detalles": "Passed for 1 relevant column",
+            "paso": true
+          }
+        ]
+      },
+      {
+        "check": "Feature-Feature Correlation",
+        "ejecutado": true,
+        "paso_condiciones": true,
+        "condiciones": [
+          {
+            "nombre": "Not more than 0 pairs are correlated above 0.98",
+            "categoria": "ConditionCategory.PASS",
+            "detalles": "All correlations are less than 0.98 except pairs []",
+            "paso": true
+          }
+        ]
+      }
+    ]
+  },
+  "P1_regresion": {
+    "integridad": {
+      "suite_nombre": "P1 Regresión - Integridad de Datos",
+      "passed": true,
+      "checks_evaluados": 8,
+      "checks_aprobados": 8,
+      "checks_con_alertas": 0,
+      "resultados": [
+        {
+          "check": "PercentOfNulls",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Percent of null values in each column is not greater than 0%",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Passed for 12 relevant columns",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "Data Duplicates",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Duplicate data ratio is less or equal to 2%",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Found 0% duplicate data",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "Single Value in Column",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Does not contain only a single value",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Passed for 13 relevant columns",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "Mixed Nulls",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Number of different null types is less or equal to 0",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Passed for 13 relevant columns",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "Mixed Data Types",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Rare data types in column are either more than 50% or less than 1% of the data",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "13 columns passed: found 0 columns with negligible types mix, and 13 columns without any types mix",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "String Mismatch",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "No string variants",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Passed for 1 relevant column",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "Feature-Feature Correlation",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Not more than 6 pairs are correlated above 0.98",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "All correlations are less than 0.98 except pairs [('promedio_14_dias', 'promedio_7_dias'), ('promedio_14_dias', 'promedio_28_dias'), ('estacion_id', 'promedio_28_dias')]",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "Feature Label Correlation",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Features' Predictive Power Score is less than 0.95",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Passed for 12 relevant columns",
+              "paso": true
+            }
+          ]
+        }
+      ]
+    },
+    "drift": {
+      "suite_nombre": "P1 Regresión - Validación Train vs Test y Data Drift",
+      "passed": true,
+      "checks_evaluados": 5,
+      "checks_aprobados": 5,
+      "checks_con_alertas": 0,
+      "resultados": [
+        {
+          "check": "Train Test Samples Mix",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Percentage of test data samples that appear in train data is less or equal to 5%",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "No samples mix found",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "Datasets Size Comparison",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Train dataset is greater or equal to test dataset",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Train and test datasets both have 5000 samples",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "New Category Train Test",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Ratio of samples with a new category is less or equal to 5%",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Passed for 3 relevant features",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "Feature Drift",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "categorical drift score < 0.35 and numerical drift score < 0.35",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Passed for 11 columns out of 12 columns.\nFound column \"dia_semana\" has the highest categorical drift score: 0.05\nFound column \"mes\" has the highest numerical drift score: 0.73",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "Label Drift",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Label drift score < 0.35",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Label's drift score Kolmogorov-Smirnov is 0.11",
+              "paso": true
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "P2_clasificacion": {
+    "integridad": {
+      "suite_nombre": "P2 Clasificación - Integridad de Datos",
+      "passed": true,
+      "checks_evaluados": 8,
+      "checks_aprobados": 8,
+      "checks_con_alertas": 0,
+      "resultados": [
+        {
+          "check": "PercentOfNulls",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Percent of null values in each column is not greater than 0%",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Passed for 7 relevant columns",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "Data Duplicates",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Duplicate data ratio is less or equal to 0%",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Found 0% duplicate data",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "Single Value in Column",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Does not contain only a single value",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Passed for 8 relevant columns",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "Mixed Nulls",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Number of different null types is less or equal to 0",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Passed for 8 relevant columns",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "Mixed Data Types",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Rare data types in column are either more than 50% or less than 1% of the data",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "8 columns passed: found 0 columns with negligible types mix, and 8 columns without any types mix",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "String Mismatch",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "No string variants",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Passed for 1 relevant column",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "Feature-Feature Correlation",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Not more than 2 pairs are correlated above 0.98",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "All correlations are less than 0.98 except pairs []",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "Feature Label Correlation",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Features' Predictive Power Score is less than 0.95",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Passed for 7 relevant columns",
+              "paso": true
+            }
+          ]
+        }
+      ]
+    },
+    "drift": {
+      "suite_nombre": "P2 Clasificación - Validación Train vs Test y Data Drift",
+      "passed": true,
+      "checks_evaluados": 5,
+      "checks_aprobados": 5,
+      "checks_con_alertas": 0,
+      "resultados": [
+        {
+          "check": "Train Test Samples Mix",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Percentage of test data samples that appear in train data is less or equal to 15%",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Percent of test data samples that appear in train data: 3.8%",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "Datasets Size Comparison",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Train dataset is greater or equal to test dataset",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Train and test datasets both have 5000 samples",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "New Category Train Test",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Ratio of samples with a new category is less or equal to 5%",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Passed for 3 relevant features",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "Feature Drift",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "categorical drift score < 0.35 and numerical drift score < 0.35",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Passed for 7 columns out of 7 columns.\nFound column \"dia_semana\" has the highest categorical drift score: 0.02\nFound column \"lag_salidas\" has the highest numerical drift score: 0.11",
+              "paso": true
+            }
+          ]
+        },
+        {
+          "check": "Label Drift",
+          "ejecutado": true,
+          "paso_condiciones": true,
+          "condiciones": [
+            {
+              "nombre": "Label drift score < 0.35",
+              "categoria": "ConditionCategory.PASS",
+              "detalles": "Label's drift score Cramer's V is 0.07",
+              "paso": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

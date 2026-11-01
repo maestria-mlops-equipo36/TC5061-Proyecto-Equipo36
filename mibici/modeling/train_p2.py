@@ -54,24 +54,174 @@ def obtener_hash_datos() -> str:
 
 
 def preparar_datos_p2():
+    """
+    Prepara los datos para el modelo de clasificación P2.
+
+    Realiza una partición cronológica por ventanas temporales completas,
+    evitando que una misma ventana aparezca en entrenamiento, validación
+    y prueba.
+
+    Proporciones objetivo:
+        - Entrenamiento: 70 %
+        - Validación: 15 %
+        - Prueba: 15 %
+
+    Las proporciones se calculan sobre ventanas temporales únicas, por
+    lo que pueden diferir ligeramente de los porcentajes de registros.
+
+    Returns:
+        tuple: X_train, y_train, X_val, y_val, X_test, y_test.
+
+    Raises:
+        ValueError: Si no existen suficientes ventanas temporales o si
+            los datos presentan problemas que impiden la partición.
+    """
+
+    # ------------------------------------------------------------------
+    # 1. Cargar datos procesados
+    # ------------------------------------------------------------------
     viajes_path = PROCESSED_DATA_DIR / "viajes_limpios.parquet"
     estaciones_path = PROCESSED_DATA_DIR / "estaciones.parquet"
 
     df_viajes = pd.read_parquet(viajes_path)
     df_estaciones = pd.read_parquet(estaciones_path)
-    df_p2 = calcular_features_riesgo_p2(df_viajes, df_estaciones, freq="2h")
 
-    # Partición temporal en 3 bloques (Train: 70%, Val: 15%, Test: 15%)
-    df_p2 = df_p2.sort_values("ventana").reset_index(drop=True)
-    n = len(df_p2)
-    corte_train = int(n * 0.70)
-    corte_val = int(n * 0.85)
+    # ------------------------------------------------------------------
+    # 2. Generar características y etiquetas de clasificación
+    # ------------------------------------------------------------------
+    df_p2 = calcular_features_riesgo_p2(
+        df_viajes,
+        df_estaciones,
+        freq="2h",
+    )
 
-    train = df_p2.iloc[:corte_train]
-    val = df_p2.iloc[corte_train:corte_val]
-    test = df_p2.iloc[corte_val:]
+    # Verificar que existan observaciones
+    if df_p2.empty:
+        raise ValueError(
+            "P2: No existen observaciones disponibles después "
+            "de generar las características."
+        )
 
-    pred_columns = ["capacidad","hora","dia_semana","es_fin_de_semana","lag_salidas","lag_llegadas","lag_flujo_neto",]
+    # Verificar que todas las observaciones tengan una ventana válida
+    if df_p2["ventana"].isna().any():
+        raise ValueError(
+            "P2: Se encontraron ventanas temporales con valores nulos."
+        )
+
+    # ------------------------------------------------------------------
+    # 3. Ordenar cronológicamente
+    # ------------------------------------------------------------------
+    df_p2 = df_p2.sort_values(
+        ["ventana", "estacion_id"]
+    ).reset_index(drop=True)
+
+    # ------------------------------------------------------------------
+    # 4. Obtener ventanas temporales únicas
+    # ------------------------------------------------------------------
+    ventanas = (
+        df_p2["ventana"]
+        .drop_duplicates()
+        .sort_values()
+        .reset_index(drop=True)
+    )
+
+    n_ventanas = len(ventanas)
+
+    # Se necesitan al menos tres ventanas para crear tres conjuntos
+    if n_ventanas < 3:
+        raise ValueError(
+            "P2: Se necesitan al menos 3 ventanas temporales distintas "
+            "para crear los conjuntos de entrenamiento, validación y "
+            f"prueba. Se encontraron {n_ventanas}."
+        )
+
+    # ------------------------------------------------------------------
+    # 5. Calcular puntos de corte por ventanas completas
+    # ------------------------------------------------------------------
+    corte_train = int(n_ventanas * 0.70)
+    corte_val = int(n_ventanas * 0.85)
+
+    # Garantizar al menos una ventana en cada conjunto
+    corte_train = max(1, corte_train)
+    corte_val = max(corte_train + 1, corte_val)
+    corte_val = min(corte_val, n_ventanas - 1)
+
+    # ------------------------------------------------------------------
+    # 6. Asignar ventanas a cada conjunto
+    # ------------------------------------------------------------------
+    ventanas_train = ventanas.iloc[:corte_train]
+    ventanas_val = ventanas.iloc[corte_train:corte_val]
+    ventanas_test = ventanas.iloc[corte_val:]
+
+    # ------------------------------------------------------------------
+    # 7. Seleccionar todas las estaciones de cada ventana
+    # ------------------------------------------------------------------
+    train = df_p2.loc[
+        df_p2["ventana"].isin(ventanas_train)
+    ].copy()
+
+    val = df_p2.loc[
+        df_p2["ventana"].isin(ventanas_val)
+    ].copy()
+
+    test = df_p2.loc[
+        df_p2["ventana"].isin(ventanas_test)
+    ].copy()
+
+    # ------------------------------------------------------------------
+    # 8. Verificar integridad de la partición
+    # ------------------------------------------------------------------
+
+    # Ningún conjunto debe estar vacío
+    if train.empty or val.empty or test.empty:
+        raise ValueError(
+            "P2: La partición temporal produjo un conjunto vacío."
+        )
+
+    # Todas las observaciones deben pertenecer a un conjunto
+    total_particionado = len(train) + len(val) + len(test)
+
+    if total_particionado != len(df_p2):
+        raise ValueError(
+            "P2: La partición temporal no conserva todas "
+            "las observaciones originales."
+        )
+
+    # Verificar separación cronológica estricta
+    if not (
+        train["ventana"].max() < val["ventana"].min()
+        and val["ventana"].max() < test["ventana"].min()
+    ):
+        raise ValueError(
+            "P2: Se detectó un solapamiento temporal entre "
+            "entrenamiento, validación y prueba."
+        )
+
+    # ------------------------------------------------------------------
+    # 9. Seleccionar características predictoras y etiquetas
+    # ------------------------------------------------------------------
+    pred_columns = [
+        "capacidad",
+        "hora",
+        "dia_semana",
+        "es_fin_de_semana",
+        "lag_salidas",
+        "lag_llegadas",
+        "lag_flujo_neto",
+    ]
+
+    # Verificar valores faltantes en características y etiquetas
+    columnas_modelo = pred_columns + ["en_riesgo"]
+
+    if df_p2[columnas_modelo].isna().any().any():
+        raise ValueError(
+            "P2: Se encontraron valores faltantes en las "
+            "características o etiquetas del modelo."
+        )
+
+    # ------------------------------------------------------------------
+    # 10. Devolver los seis conjuntos utilizados por P2
+    # ------------------------------------------------------------------
     return (
         train[pred_columns],
         train["en_riesgo"],
