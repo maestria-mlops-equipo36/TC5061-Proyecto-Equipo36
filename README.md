@@ -376,7 +376,8 @@ TC5061-Proyecto-Equipo36/
 │   ├── validate_schema.py # Validación de encabezados
 │   ├── features.py       # Ingeniería de características
 │   ├── plots.py          # Visualizaciones
-│   └── modeling/         # Entrenamiento y predicción
+│   ├── modeling/         # Entrenamiento, registro y predicción
+│   └── serving/          # Recuperación de modelos en MLflow y API REST (FastAPI)
 ├── models/               # Modelos generados
 ├── notebooks/            # Cuadernos Jupyter
 ├── references/           # Diccionarios y referencias
@@ -613,3 +614,88 @@ Entre las contribuciones integradas se encuentran:
 - PR #18: verificaciones básicas de seguridad.
 
 Las contribuciones quedaron registradas en el historial de Git y fueron integradas en la rama principal `main`.
+
+---
+
+## 12. Servicio de inferencia y recuperación de modelos desde MLflow (Actividad 8)
+
+Como primer paso del despliegue del proyecto integrador MiBici, se implementa el módulo de recuperación e inferencia del modelo de predicción de demanda diaria (**P1 — Random Forest**) registrado en **MLflow Model Registry**, preparado para integrarse con la API REST construida en **FastAPI** y ejecutarse dentro de un contenedor compatible con OCI (Podman o Docker).
+
+### 12.1 Modelo seleccionado y estrategia de recuperación (`mibici/serving/model.py`)
+
+| Elemento | Configuración |
+|---|---|
+| **Pregunta de negocio** | P1 — Predicción de demanda diaria por estación (Regresión) |
+| **Algoritmo** | Random Forest Regressor |
+| **Nombre en MLflow Model Registry** | `mibici-equipo36-p1-demanda` |
+| **Alias de producción** | `champion` |
+| **Versión de respaldo** | `2` |
+| **URI por defecto** | `models:/mibici-equipo36-p1-demanda@champion` |
+| **Módulo de inferencia** | `mibici/serving/model.py` |
+
+El módulo [`mibici/serving/model.py`](mibici/serving/model.py) gestiona la carga del modelo y la generación de predicciones mediante las siguientes funciones:
+
+- **`construir_model_uri()`**: Resuelve la URI del modelo priorizando `MIBICI_MODEL_URI` (si se monta o empaqueta el artefacto dentro del contenedor), el alias `models:/mibici-equipo36-p1-demanda@champion` o la versión `models:/mibici-equipo36-p1-demanda/2`.
+- **`cargar_modelo()` y `obtener_modelo()`**: Configuran `MLFLOW_TRACKING_URI` (por defecto `http://127.0.0.1:5000`, o `http://host.containers.internal:5000` desde un contenedor), cargan el modelo con `mlflow.pyfunc.load_model()` manteniendo una instancia en caché en memoria para las peticiones HTTP y aplican respaldo automático a la versión `2` si el alias `champion` no está disponible. Incorporan manejo explícito de errores mediante `ErrorCargaModelo`.
+- **`preparar_caracteristicas_p1()`**: Valida la presencia de las 12 características requeridas (`P1_FEATURE_COLS`), comprueba que no existan valores nulos, infinitos ni fuera de rango y garantiza la conversión a los tipos exactos registrados en la firma (`signature`) de MLflow:
+  - `estacion_id`, `es_fin_de_semana`: `int64` (`long`)
+  - `dia_semana`, `mes`: `int32` (`integer`)
+  - `viajes_dia_anterior`, `viajes_hace_7_dias`, `promedio_7_dias`, `promedio_14_dias`, `viajes_hace_14_dias`, `viajes_hace_28_dias`, `promedio_28_dias`, `promedio_mismo_dia_4_semanas`: `float64` (`double`)
+- **`predecir_demanda()`**: Ejecuta la inferencia con el modelo cargado, asegura predicciones no negativas (`max(0.0, pred)`) y devuelve el diccionario compatible con el esquema de salida `PrediccionSalida` de la API (`estacion_id`, `demanda_estimada`, `modelo`).
+
+### 12.2 Variables de entorno soportadas
+
+| Variable | Valor por defecto | Descripción |
+|---|---|---|
+| `MLFLOW_TRACKING_URI` | `http://127.0.0.1:5000` | Dirección del servidor MLflow Model Registry |
+| `MIBICI_MODEL_NAME` | `mibici-equipo36-p1-demanda` | Nombre del modelo registrado en MLflow |
+| `MIBICI_MODEL_ALIAS` | `champion` | Alias utilizado para recuperar el modelo |
+| `MIBICI_MODEL_VERSION` | `2` | Versión del modelo utilizada como respaldo o consulta explícita |
+| `MIBICI_MODEL_URI` | *(Opcional)* | URI directa o ruta local del artefacto del modelo dentro del contenedor |
+
+### 12.3 Verificación del módulo de inferencia por CLI
+
+Con el servidor MLflow en ejecución (o especificando `--tracking-uri`), es posible verificar la carga del modelo desde el Model Registry y ejecutar una predicción de prueba directamente desde la terminal:
+
+```bash
+# 1. Recuperar el modelo mediante el alias @champion (comportamiento por defecto)
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+python -m mibici.serving.model
+
+# 2. Recuperar el modelo especificando explícitamente la versión 2
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+python -m mibici.serving.model --version 2
+
+# 3. Enviar un JSON personalizado con las 12 características de entrada
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+python -m mibici.serving.model --input-json '{
+  "estacion_id": 10,
+  "dia_semana": 2,
+  "mes": 10,
+  "es_fin_de_semana": 0,
+  "viajes_dia_anterior": 25.0,
+  "viajes_hace_7_dias": 28.0,
+  "promedio_7_dias": 26.5,
+  "promedio_14_dias": 27.3,
+  "viajes_hace_14_dias": 30.0,
+  "viajes_hace_28_dias": 24.0,
+  "promedio_28_dias": 26.8,
+  "promedio_mismo_dia_4_semanas": 27.0
+}'
+```
+
+**Ejemplo de respuesta generada:**
+
+```json
+{
+  "estacion_id": 10,
+  "demanda_estimada": 25.255555555555556,
+  "modelo": "mibici-equipo36-p1-demanda@champion"
+}
+```
+
+### 12.4 Justificación de la estrategia de inferencia
+
+Se adopta un esquema de **inferencia en línea (tiempo real vía petición HTTP REST)** recibiendo las 12 características temporales e históricas previamente calculadas en formato JSON:
+1. **Desacoplamiento del histórico crudo:** Evita que el contenedor de inferencia deba almacenar o reprocesar en cada solicitud los más de 4.3 millones de viajes históricos (`viajes_limpios.parquet`), reduciendo drásticamente el consumo de memoria, el tamaño de la imagen y la latencia de respuesta (milisegundos por petición).
+2. **Flexibilidad de despliegue:** Al parametrizar la carga mediante variables de entorno (`MLFLOW_TRACKING_URI` y `MIBICI_MODEL_URI`), el servicio puede recuperar dinámicamente la versión `@champion` desde el servidor MLflow o operar de forma autónoma con el artefacto del modelo empaquetado en la imagen del contenedor.
