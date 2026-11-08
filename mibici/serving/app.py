@@ -1,6 +1,7 @@
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
+from mibici.serving import model as serving_model
 from mibici.serving.schemas import PrediccionEntrada, PrediccionSalida
 
 
@@ -22,14 +23,23 @@ def health():
 
 @app.post("/predict", response_model=PrediccionSalida)
 def predict(datos: PrediccionEntrada):
-    """Valida las características y devuelve una predicción simulada."""
+    """Ejecuta una predicción real utilizando el modelo P1."""
 
-    # Valor temporal para probar el funcionamiento de la API.
-    # Se sustituirá al integrar el modelo registrado en MLflow.
-    demanda_simulada = datos.promedio_7_dias
+    try:
+        resultado = serving_model.predecir_demanda(
+            datos.model_dump()
+        )
 
-    return PrediccionSalida(
-        estacion_id=datos.estacion_id,
-        demanda_estimada=demanda_simulada,
-        modelo="simulado",
-    )
+        return PrediccionSalida(**resultado)
+
+    except serving_model.ErrorCargaModelo:
+        raise HTTPException(
+            status_code=503,
+            detail="El modelo de predicción no está disponible.",
+        )
+
+    except serving_model.ErrorPrediccionModelo:
+        raise HTTPException(
+            status_code=500,
+            detail="No fue posible ejecutar la predicción.",
+        )
