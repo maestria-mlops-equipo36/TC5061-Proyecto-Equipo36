@@ -286,14 +286,14 @@ El alias `champion` identifica la versión seleccionada de cada modelo y permite
 **Registro de modelos:**
 
 ```bash
-MLFLOW_TRACKING_URI=http://127.0.0.0:5000 \
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
 python -m mibici.modeling.register_models
 ```
 
 **Verificación del registro:**
 
 ```bash
-MLFLOW_TRACKING_URI=http://127.0.0.0:5000 \
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
 python -m mibici.modeling.verify_registry
 ```
 
@@ -1098,42 +1098,255 @@ Por su parte, la prueba de pip-audit permite actualmente los códigos de salida 
 Una alternativa es exigir un resultado sin vulnerabilidades conocidas, una vez evaluadas las actualizaciones correspondientes. Si existen excepciones justificadas, estas deberían documentarse explícitamente y revisarse periódicamente.
 
 También se recomienda comprobar que las herramientas estén instaladas antes de ejecutar las pruebas, para evitar interpretar errores de configuración como resultados satisfactorios.
+## 15. Despliegue de API REST en Contenedor OCI con Docker y Podman (Componente 4)
 
-## 15. Despliegue de API REST en Contenedor OCI con Podman (Componente 4)
-
-Se diseñó e implementó la contenedorización de la API REST construida con FastAPI mediante un estándar OCI (`Containerfile`), garantizando portabilidad, aislamiento del entorno de ejecución e inferencia síncrona en tiempo real conectada a **MLflow Model Registry**[cite: 7].
+Se implementó la contenedorización de la API REST desarrollada con FastAPI mediante una imagen compatible con el estándar OCI, definida en el archivo `Containerfile`. El servicio permite realizar inferencias de demanda de viajes por estación utilizando el modelo P1 registrado en MLflow Model Registry.
 
 ### 15.1 Justificación de la estrategia de despliegue
 
-1. **Aislamiento y reproducibilidad:** El empaquetado OCI encapsula las dependencias exactas (`requirements.txt`), la versión de Python y el código fuente de servicio sin contaminar ni depender de la configuración del sistema operativo anfitrión.
-2. **Desacoplamiento arquitectónico:** La imagen del contenedor ejecuta el servicio Uvicorn/FastAPI de forma desacoplada del almacén de modelos. Mediante la variable de entorno `MLFLOW_TRACKING_URI`, el contenedor puede resolver dinámicamente el modelo registrado en un servidor local o remoto, o bien cargar un artefacto montado en volumen mediante `MIBICI_MODEL_URI`.
-3. **Inferencia síncrona en milisegundos:** Diseñado para atender solicitudes operativas puntuales (estimación de demanda diaria por estación) con validación estricta de esquemas Pydantic y respuesta HTTP 200 en tiempo real.
+1. **Aislamiento y reproducibilidad:** la imagen incluye Python 3.12, las dependencias declaradas en `requirements.txt` y el código fuente de la API.
+
+2. **Desacoplamiento arquitectónico:** FastAPI se ejecuta dentro del contenedor, mientras que MLflow Tracking Server puede operar en el equipo anfitrión o en un servidor externo. La comunicación se configura mediante `MLFLOW_TRACKING_URI`.
+
+3. **Inferencia síncrona:** el endpoint `/predict` recibe las características de entrada, valida los datos mediante Pydantic y ejecuta el modelo P1 para estimar la demanda diaria de viajes.
 
 ### 15.2 Especificación del contenedor (`Containerfile`)
 
-El archivo `Containerfile` implementa buenas prácticas de contenedorización para producción:
-- **Imagen base:** `python:3.12-slim` para optimizar el tamaño de la capa base y reducir superficie de ataque.
-- **Usuario no privilegiado:** Ejecución bajo usuario de sistema (`appuser:appgroup`) para cumplir lineamientos de seguridad de contenedores.
-- **Variables de entorno de contenedor:**
-  - `PYTHONUNBUFFERED=1` para transmisión inmediata de logs a la consola de Podman.
-  - `PORT=8000` puerto de escucha del servidor ASGI Uvicorn.
-  - `MLFLOW_TRACKING_URI` parametrizable en tiempo de ejecución.
-- **Mapeo y permisos:** Copia modular de código fuente y exposición declarativa del puerto `8000`.
+El archivo `Containerfile` incorpora las siguientes características:
 
-### 15.3 Consideraciones de red en macOS / Apple Silicon
+- **Imagen base:** `python:3.12-slim`.
+- **Dependencias:** instalación mediante `requirements.txt`.
+- **Usuario no privilegiado:** ejecución con `appuser:appgroup`.
+- **Servidor de aplicaciones:** Uvicorn con FastAPI.
+- **Puerto de servicio:** `8000`.
+- **Variable `MLFLOW_TRACKING_URI`:** dirección del servidor MLflow, configurable al iniciar el contenedor.
+- **Healthcheck:** comprobación periódica del endpoint `/health`.
+- **Compatibilidad OCI:** construcción mediante Docker o Podman.
 
-En entornos macOS gestionados mediante máquinas virtuales de Podman, el contenedor opera dentro de una red virtual aislada:
-- **Resolución de Host:** Para conectar con el servidor de MLflow corriendo en el host macOS, el contenedor debe apuntar a `http://host.containers.internal:5001`[cite: 7, 8].
-- **Seguridad en MLflow (DNS Rebinding):** Debido a que las versiones modernas de MLflow incorporan middleware de protección contra ataques de *DNS rebinding*, el servidor en el host debe inicializarse con el parámetro `--allowed-hosts` para aceptar solicitudes originadas desde `host.containers.internal`[cite: 7, 8].
+El `Containerfile` declara `PORT=8000`; en la implementación actual, el comando de arranque de Uvicorn utiliza explícitamente el puerto `8000`.
 
-### 15.4 Construcción y ejecución del servicio
+### 15.3 Configuración de red y puertos
 
-#### 1. Iniciar el servidor MLflow en el host (puerto 5001)
+El proyecto utiliza el puerto `5000` como configuración predeterminada de MLflow y el puerto `8000` para FastAPI.
+
+| Entorno | Dirección de MLflow |
+|---|---|
+| Ejecución local predeterminada | `http://127.0.0.1:5000` |
+| Docker Desktop | `http://host.docker.internal:5000` |
+| Podman | `http://host.containers.internal:5000` |
+| Ejecución local alternativa | `http://127.0.0.1:5001` |
+
+Si el puerto `5000` está ocupado, puede utilizarse `5001`, actualizando las direcciones correspondientes mediante `MLFLOW_TRACKING_URI`.
+
+Para que un contenedor acceda al servidor MLflow del anfitrión, este debe escuchar en una interfaz accesible desde la red del contenedor. En versiones de MLflow que implementan restricciones de hosts, también deben autorizarse los nombres utilizados por Docker o Podman mediante `--allowed-hosts`.
+
+### 15.4 Inicio del servidor MLflow
+
+Antes de ejecutar la API, debe estar disponible un servidor MLflow con el modelo `mibici-equipo36-p1-demanda` registrado y el alias `champion` configurado.
+
+Se debe utilizar la base de datos SQLite que contiene los experimentos y modelos existentes.
+
+Ejemplo de inicio del servidor en el puerto predeterminado:
 
 ```bash
 mlflow server \
-  --backend-store-uri sqlite:///$(pwd)/mlflow.db \
-  --default-artifact-root file:///$(pwd)/mlruns \
+  --backend-store-uri "sqlite:////ruta/al/almacenamiento/mlflow.db" \
   --host 0.0.0.0 \
-  --port 5001 \
-  --allowed-hosts "localhost,127.0.0.1,host.containers.internal,*"
+  --port 5000 \
+  --allowed-hosts "localhost:5000,127.0.0.1:5000,host.docker.internal:5000,host.containers.internal:5000"
+```
+
+La ruta `/ruta/al/almacenamiento/mlflow.db` debe sustituirse por la ubicación real de la base de datos.
+
+**Nota:** iniciar MLflow con una base de datos nueva no recupera automáticamente los modelos existentes. También deben estar disponibles los artefactos asociados a los modelos registrados.
+
+Si se utiliza el puerto `5001`, se debe modificar `--port`, la lista de hosts autorizados y la variable `MLFLOW_TRACKING_URI`.
+
+### 15.5 Construcción de la imagen
+
+Desde la raíz del repositorio, ejecutar uno de los siguientes comandos.
+
+**Docker:**
+
+```bash
+docker build -f Containerfile -t mibici-equipo36-api:local .
+```
+
+**Podman:**
+
+```bash
+podman build -f Containerfile -t mibici-equipo36-api:local .
+```
+
+La imagen incluye las dependencias y los módulos necesarios para ejecutar la API.
+
+### 15.6 Acceso a los artefactos del modelo
+
+La API recupera el modelo mediante la URI:
+
+```text
+models:/mibici-equipo36-p1-demanda@champion
+```
+
+Cuando MLflow utiliza artefactos almacenados en rutas locales, el contenedor necesita acceso a dichas rutas.
+
+Durante las pruebas locales se comprobó que la comunicación HTTP con MLflow no era suficiente para recuperar el modelo: también fue necesario montar los artefactos dentro del contenedor.
+
+Para evitar modificaciones sobre los archivos originales, se utilizó una copia temporal:
+
+```bash
+mkdir -p /tmp/mibici-mlruns-docker
+cp -R mlruns/. /tmp/mibici-mlruns-docker/
+```
+
+El directorio copiado debe montarse en la ruta absoluta que MLflow tiene registrada para los artefactos del modelo. Esta ruta puede consultarse mediante los metadatos del Registry.
+
+En las pruebas, MLflow necesitó permisos de escritura para actualizar el archivo auxiliar `registered_model_meta`. Por ello, el volumen temporal se montó con permisos de escritura para el usuario del contenedor.
+
+**Limitación:** este procedimiento corresponde a un entorno de desarrollo local. Para despliegues portables se recomienda utilizar un almacenamiento de artefactos accesible desde el servicio, sin depender de rutas absolutas de un equipo específico.
+
+### 15.7 Ejecución del contenedor
+
+**Ejemplo con Docker Desktop y MLflow en el puerto 5000:**
+
+```bash
+docker run -d \
+  --name mibici-api-test \
+  -p 8000:8000 \
+  -e MLFLOW_TRACKING_URI=http://host.docker.internal:5000 \
+  -v "/ruta/local/de/mlruns:/ruta/registrada/en/mlflow/mlruns" \
+  mibici-equipo36-api:local
+```
+
+Las rutas del volumen deben adaptarse al entorno. El directorio de destino debe coincidir con la ubicación registrada en MLflow.
+
+El usuario del contenedor debe contar con permisos suficientes para leer los artefactos y escribir los archivos auxiliares requeridos por MLflow.
+
+**Ejemplo equivalente con Podman y MLflow en el puerto 5000:**
+
+```bash
+podman run -d \
+  --name mibici-api-test \
+  -p 8000:8000 \
+  -e MLFLOW_TRACKING_URI=http://host.containers.internal:5000 \
+  -v "/ruta/local/de/mlruns:/ruta/registrada/en/mlflow/mlruns" \
+  mibici-equipo36-api:local
+```
+
+La configuración de Podman debe verificarse en el entorno donde se ejecute, especialmente en lo relativo a conectividad y permisos de volúmenes.
+
+### 15.8 Verificación del servicio HTTP
+
+**Comprobar disponibilidad:**
+
+```bash
+curl -i http://localhost:8000/health
+```
+
+Respuesta esperada:
+
+```json
+{
+  "status": "ok",
+  "service": "mibici-api"
+}
+```
+
+**Documentación interactiva:**
+
+```text
+http://localhost:8000/docs
+```
+
+**Ejecutar una predicción:**
+
+```bash
+curl -i -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "estacion_id": 10,
+    "dia_semana": 2,
+    "mes": 10,
+    "es_fin_de_semana": 0,
+    "viajes_dia_anterior": 25,
+    "viajes_hace_7_dias": 28,
+    "promedio_7_dias": 26.5,
+    "promedio_14_dias": 27.2,
+    "viajes_hace_14_dias": 30,
+    "viajes_hace_28_dias": 24,
+    "promedio_28_dias": 26.8,
+    "promedio_mismo_dia_4_semanas": 27.5
+  }'
+```
+
+En la ejecución de prueba con Docker se obtuvo HTTP `200 OK` y la siguiente respuesta:
+
+```json
+{
+  "estacion_id": 10,
+  "demanda_estimada": 28.523759203735008,
+  "modelo": "mibici-equipo36-p1-demanda@champion"
+}
+```
+
+Los datos de entrada corresponden a un ejemplo de prueba. La predicción puede cambiar si se modifica el modelo registrado bajo el alias `champion`.
+
+### 15.9 Validación de datos de entrada
+
+El esquema Pydantic exige las 12 características del modelo P1 y aplica restricciones sobre sus valores.
+
+Por ejemplo, el campo `mes` debe estar comprendido entre `1` y `12`.
+
+Para comprobar la validación:
+
+```bash
+curl -i -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "estacion_id": 10,
+    "mes": 15
+  }'
+```
+
+La API debe responder HTTP `422 Unprocessable Entity`, indicando que el mes está fuera del intervalo permitido y que faltan campos obligatorios.
+
+Esta validación fue comprobada durante las pruebas locales con Docker.
+
+### 15.10 Verificación y administración del contenedor
+
+**Consultar los registros:**
+
+```bash
+docker logs --tail 40 mibici-api-test
+```
+
+**Consultar el estado del healthcheck:**
+
+```bash
+docker inspect --format '{{.State.Health.Status}}' mibici-api-test
+```
+
+**Detener y eliminar el contenedor:**
+
+```bash
+docker stop mibici-api-test
+docker rm mibici-api-test
+```
+
+Los comandos equivalentes pueden ejecutarse con Podman sustituyendo `docker` por `podman`.
+
+### 15.11 Resultados y limitaciones
+
+Durante las pruebas realizadas con Docker Desktop en macOS se verificó:
+
+1. Construcción satisfactoria de la imagen OCI.
+2. Ejecución del servicio mediante un usuario no privilegiado.
+3. Disponibilidad de `/health` y del healthcheck.
+4. Comunicación del contenedor con MLflow Tracking Server.
+5. Recuperación del modelo P1 desde Model Registry mediante el alias `champion`.
+6. Ejecución de una predicción real mediante `/predict`, con respuesta HTTP 200.
+7. Rechazo de entradas inválidas mediante Pydantic, con respuesta HTTP 422.
+
+La implementación cumple el flujo funcional de inferencia desde una API REST contenedorizada. No obstante, cuando los artefactos están almacenados en rutas locales, la ejecución depende de la disponibilidad y permisos de dichas rutas.
+
+La construcción y ejecución con Podman se incluyen como procedimiento compatible con OCI, pero no forman parte de las pruebas realizadas con Docker Desktop descritas en esta sección.
