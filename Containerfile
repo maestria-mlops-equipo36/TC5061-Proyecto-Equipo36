@@ -17,12 +17,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copiar manifiesto e instalar librerías
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt uvicorn fastapi pydantic httpx
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar código fuente, módulos de serving y documentación
 COPY mibici/ /app/mibici/
 COPY README.md /app/
+# Crear usuario y grupo sin privilegios
+RUN groupadd --system appgroup && \
+    useradd --system --gid appgroup --home-dir /app appuser && \
+    chown -R appuser:appgroup /app
+
+# Ejecutar la aplicación sin privilegios de root
+USER appuser
 
 # Exponer el puerto del servicio REST
 EXPOSE 8000
