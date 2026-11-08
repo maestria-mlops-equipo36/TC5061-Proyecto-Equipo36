@@ -1098,3 +1098,42 @@ Por su parte, la prueba de pip-audit permite actualmente los códigos de salida 
 Una alternativa es exigir un resultado sin vulnerabilidades conocidas, una vez evaluadas las actualizaciones correspondientes. Si existen excepciones justificadas, estas deberían documentarse explícitamente y revisarse periódicamente.
 
 También se recomienda comprobar que las herramientas estén instaladas antes de ejecutar las pruebas, para evitar interpretar errores de configuración como resultados satisfactorios.
+
+## 15. Despliegue de API REST en Contenedor OCI con Podman (Componente 4)
+
+Se diseñó e implementó la contenedorización de la API REST construida con FastAPI mediante un estándar OCI (`Containerfile`), garantizando portabilidad, aislamiento del entorno de ejecución e inferencia síncrona en tiempo real conectada a **MLflow Model Registry**[cite: 7].
+
+### 15.1 Justificación de la estrategia de despliegue
+
+1. **Aislamiento y reproducibilidad:** El empaquetado OCI encapsula las dependencias exactas (`requirements.txt`), la versión de Python y el código fuente de servicio sin contaminar ni depender de la configuración del sistema operativo anfitrión.
+2. **Desacoplamiento arquitectónico:** La imagen del contenedor ejecuta el servicio Uvicorn/FastAPI de forma desacoplada del almacén de modelos. Mediante la variable de entorno `MLFLOW_TRACKING_URI`, el contenedor puede resolver dinámicamente el modelo registrado en un servidor local o remoto, o bien cargar un artefacto montado en volumen mediante `MIBICI_MODEL_URI`.
+3. **Inferencia síncrona en milisegundos:** Diseñado para atender solicitudes operativas puntuales (estimación de demanda diaria por estación) con validación estricta de esquemas Pydantic y respuesta HTTP 200 en tiempo real.
+
+### 15.2 Especificación del contenedor (`Containerfile`)
+
+El archivo `Containerfile` implementa buenas prácticas de contenedorización para producción:
+- **Imagen base:** `python:3.12-slim` para optimizar el tamaño de la capa base y reducir superficie de ataque.
+- **Usuario no privilegiado:** Ejecución bajo usuario de sistema (`appuser:appgroup`) para cumplir lineamientos de seguridad de contenedores.
+- **Variables de entorno de contenedor:**
+  - `PYTHONUNBUFFERED=1` para transmisión inmediata de logs a la consola de Podman.
+  - `PORT=8000` puerto de escucha del servidor ASGI Uvicorn.
+  - `MLFLOW_TRACKING_URI` parametrizable en tiempo de ejecución.
+- **Mapeo y permisos:** Copia modular de código fuente y exposición declarativa del puerto `8000`.
+
+### 15.3 Consideraciones de red en macOS / Apple Silicon
+
+En entornos macOS gestionados mediante máquinas virtuales de Podman, el contenedor opera dentro de una red virtual aislada:
+- **Resolución de Host:** Para conectar con el servidor de MLflow corriendo en el host macOS, el contenedor debe apuntar a `http://host.containers.internal:5001`[cite: 7, 8].
+- **Seguridad en MLflow (DNS Rebinding):** Debido a que las versiones modernas de MLflow incorporan middleware de protección contra ataques de *DNS rebinding*, el servidor en el host debe inicializarse con el parámetro `--allowed-hosts` para aceptar solicitudes originadas desde `host.containers.internal`[cite: 7, 8].
+
+### 15.4 Construcción y ejecución del servicio
+
+#### 1. Iniciar el servidor MLflow en el host (puerto 5001)
+
+```bash
+mlflow server \
+  --backend-store-uri sqlite:///$(pwd)/mlflow.db \
+  --default-artifact-root file:///$(pwd)/mlruns \
+  --host 0.0.0.0 \
+  --port 5001 \
+  --allowed-hosts "localhost,127.0.0.1,host.containers.internal,*"
