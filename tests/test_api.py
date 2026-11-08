@@ -229,10 +229,6 @@ def test_predict_estructura_invalida(entrada_invalida):
     assert len(errores) > 0
 
 
-@pytest.mark.xfail(
-    reason="Pendiente integrar /predict con la función de inferencia P1",
-    strict=True,
-)
 def test_predict_utiliza_funcion_inferencia(monkeypatch):
     """Verifica que FastAPI utiliza la función de inferencia del modelo P1."""
 

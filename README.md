@@ -702,33 +702,44 @@ Se adopta un esquema de **inferencia en línea (tiempo real vía petición HTTP 
 
 ## 13. Pruebas y validación de la API REST con FastAPI (Actividad 8)
 
-Se implementaron pruebas automatizadas y verificaciones HTTP para evaluar el funcionamiento de la API REST de MiBici, desarrollada con FastAPI. Las pruebas comprueban la disponibilidad del servicio, la validación de las características de entrada mediante Pydantic, la estructura de las respuestas y el comportamiento del módulo de inferencia P1.
+Se implementaron pruebas automatizadas y verificaciones HTTP para evaluar el funcionamiento de la API REST de MiBici, desarrollada con FastAPI e integrada con el modelo P1 registrado en MLflow Model Registry.
 
-Las pruebas automatizadas se encuentran en `tests/test_api.py` y utilizan **PyTest**, **FastAPI TestClient** y **mocks** para verificar el comportamiento del servicio sin depender exclusivamente de un servidor MLflow activo.
+Las pruebas comprueban la disponibilidad del servicio, la validación de las características de entrada mediante Pydantic, la estructura de las respuestas HTTP y la ejecución de inferencias utilizando el modelo de predicción de demanda.
+
+Las pruebas automatizadas se encuentran en `tests/test_api.py` y utilizan **PyTest**, **FastAPI TestClient** y **mocks** para verificar el comportamiento de la aplicación. Esta estrategia permite realizar pruebas unitarias independientes del servidor MLflow, además de pruebas de integración con el modelo real.
 
 ### 13.1 Pruebas automatizadas
 
-La suite incluye los siguientes escenarios:
+La suite de pruebas de la API contempla los siguientes escenarios:
 
 | Categoría | Validaciones realizadas |
 |---|---|
-| Disponibilidad del servicio | Respuesta HTTP 200 y contenido de `GET /health`. |
-| Solicitudes válidas | Código HTTP 200, estructura de salida y correspondencia del identificador de estación. |
+| Disponibilidad del servicio | Verificación del código HTTP 200 y del contenido de `GET /health`. |
+| Solicitudes válidas | Verificación del código HTTP 200, la estructura de salida y la correspondencia del identificador de estación. |
 | Campos obligatorios | Rechazo de solicitudes con características faltantes mediante HTTP 422. |
 | Restricciones numéricas | Validación de rangos permitidos para días, meses, indicadores y características históricas. |
 | Tipos de datos | Rechazo de valores incompatibles con los tipos definidos en Pydantic. |
 | Campos adicionales | Rechazo de propiedades no contempladas en el esquema de entrada. |
 | Valores límite | Aceptación de valores ubicados en los límites permitidos. |
 | Estructura de entrada | Rechazo de cuerpos JSON con estructuras incompatibles. |
-| Integración con inferencia | Verificación mediante mocks de la función `predecir_demanda()`. |
+| Integración con inferencia | Verificación de que el endpoint `/predict` utiliza la función `predecir_demanda()`. |
 | Resultados de inferencia | Manejo de predicciones negativas, vacías, no finitas y errores del modelo. |
 | Integración real con MLflow | Recuperación del modelo P1 registrado y ejecución de una predicción real. |
 
-La prueba que verifica que el endpoint `/predict` invoca `predecir_demanda()` está marcada temporalmente con `pytest.mark.xfail`, debido a que la versión evaluada de `app.py` todavía devuelve una predicción simulada.
+Para las pruebas unitarias se utilizan modelos y funciones simuladas mediante mocks, lo que permite verificar el comportamiento de la aplicación de manera controlada y reproducible.
+
+Adicionalmente, se incluye una prueba de integración que recupera el modelo registrado en MLflow y ejecuta una predicción utilizando las características de entrada correspondientes al problema P1.
+
+**Resultados obtenidos:**
+
+- **73 pruebas de la API ejecutadas exitosamente.**
+- Validación de solicitudes correctas e incorrectas mediante códigos HTTP 200 y 422.
+- Verificación de la conexión entre el endpoint `/predict` y la función de inferencia.
+- Ejecución exitosa de una predicción con el modelo P1 registrado en MLflow.
 
 ### 13.2 Ejecución de las pruebas con PyTest
 
-Ejecutar los siguientes comandos desde la raíz del repositorio, con el entorno virtual activado.
+Los siguientes comandos deben ejecutarse desde la raíz del repositorio, con el entorno virtual activado.
 
 **Pruebas sin dependencia de MLflow:**
 
@@ -736,32 +747,20 @@ Ejecutar los siguientes comandos desde la raíz del repositorio, con el entorno 
 python -m pytest tests/test_api.py -m "not integration" -v
 ```
 
-Estas pruebas verifican los endpoints, las validaciones Pydantic y el comportamiento de inferencia mediante modelos simulados.
+Estas pruebas verifican los endpoints, las validaciones de Pydantic y el comportamiento de inferencia mediante mocks, sin requerir un servidor MLflow activo.
 
-**Resultado obtenido:**
-
-```text
-71 passed, 1 deselected, 1 xfailed, 1 warning
-```
-
-La prueba marcada como `xfail` corresponde a la integración pendiente entre el endpoint `/predict` y la función `predecir_demanda()`.
+La suite incluye **72 pruebas independientes del servidor MLflow**.
 
 **Prueba de integración real con MLflow:**
 
-Para ejecutarla, se requiere un servidor MLflow disponible en `http://127.0.0.1:5000`, con el modelo `mibici-equipo36-p1-demanda` registrado y el alias `champion` configurado.
+Para ejecutar esta prueba, se requiere un servidor MLflow disponible en `http://127.0.0.1:5000`, con el modelo `mibici-equipo36-p1-demanda` registrado y el alias `champion` configurado.
 
 ```bash
 MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
 python -m pytest tests/test_api.py -m integration -v
 ```
 
-**Resultado obtenido:**
-
-```text
-1 passed, 72 deselected, 1 warning
-```
-
-La prueba recupera el modelo real desde MLflow Model Registry y ejecuta una predicción utilizando las características de ejemplo de P1.
+La prueba recupera el modelo desde MLflow Model Registry y ejecuta una predicción utilizando las características de ejemplo de P1.
 
 **Ejecutar todas las pruebas de la API:**
 
@@ -772,22 +771,55 @@ MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
 python -m pytest tests/test_api.py -v
 ```
 
-El marcador `integration` permite separar las pruebas que requieren MLflow de las que pueden ejecutarse de manera independiente.
+**Resultado obtenido:**
 
-La advertencia observada durante las ejecuciones corresponde a una deprecación de compatibilidad entre Starlette TestClient y HTTPX. No impidió completar las pruebas.
+```text
+73 passed, 1 warning in 3.50s
+```
+
+El marcador `integration`, configurado en `pyproject.toml`, permite separar las pruebas que requieren MLflow de aquellas que pueden ejecutarse de manera independiente.
+
+**Ejecutar todas las pruebas del proyecto:**
+
+```bash
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+python -m pytest tests/ -v
+```
+
+**Resultado obtenido:**
+
+```text
+129 passed, 3 warnings in 28.06s
+```
+
+Este resultado confirma que las pruebas de la API se ejecutan correctamente junto con las pruebas existentes de procesamiento de datos, regresión, clasificación, clustering, reproducibilidad, Deepchecks y seguridad.
+
+Las advertencias registradas corresponden a deprecaciones de compatibilidad entre Starlette TestClient y HTTPX, así como a parámetros de scikit-learn. Estas advertencias no impidieron la ejecución exitosa de las pruebas.
 
 ### 13.3 Pruebas HTTP mediante curl
 
-Se realizaron solicitudes HTTP reales contra la aplicación FastAPI para verificar sus endpoints y el manejo de errores.
+Se realizaron solicitudes HTTP reales contra la aplicación FastAPI para verificar la disponibilidad de los endpoints, la ejecución de inferencias mediante MLflow y el manejo de errores de validación.
 
-**Iniciar el servidor FastAPI:**
+Para realizar estas pruebas, se requiere tener disponible el servidor MLflow y ejecutar FastAPI mediante Uvicorn.
+
+**Iniciar el servidor MLflow:**
+
+```bash
+mlflow server \
+  --backend-store-uri "sqlite:///$(pwd)/mlflow.db" \
+  --default-artifact-root "file://$(pwd)/mlartifacts" \
+  --host 127.0.0.1 \
+  --port 5000
+```
+
+**Iniciar el servidor FastAPI en otra terminal:**
 
 ```bash
 MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
 uvicorn mibici.serving.app:app --host 127.0.0.1 --port 8000
 ```
 
-Los siguientes comandos deben ejecutarse en otra terminal mientras el servidor permanece activo.
+Los siguientes comandos deben ejecutarse en una tercera terminal mientras ambos servidores permanecen activos.
 
 #### 13.3.1 Verificar disponibilidad del servicio
 
@@ -803,6 +835,8 @@ curl -i http://127.0.0.1:8000/health
   "service": "mibici-api"
 }
 ```
+
+Este resultado confirma que la API se encuentra disponible y responde correctamente a las solicitudes de verificación de estado.
 
 #### 13.3.2 Enviar una solicitud de predicción válida
 
@@ -830,12 +864,16 @@ curl -i -X POST http://127.0.0.1:8000/predict \
 ```json
 {
   "estacion_id": 10,
-  "demanda_estimada": 26.5,
-  "modelo": "simulado"
+  "demanda_estimada": 28.341180320830535,
+  "modelo": "mibici-equipo36-p1-demanda@champion"
 }
 ```
 
-Esta respuesta corresponde a la implementación temporal del endpoint, que utiliza `promedio_7_dias` como predicción simulada. **No representa una inferencia del modelo entrenado en MLflow.**
+La respuesta confirma que el endpoint `/predict` utiliza el modelo P1 registrado en MLflow para generar una estimación de demanda.
+
+El campo `demanda_estimada` representa la predicción generada por el modelo a partir de las características proporcionadas, mientras que `modelo` identifica el modelo registrado y su alias correspondiente.
+
+Los valores utilizados en esta solicitud corresponden a un ejemplo sintético de entrada para verificar el funcionamiento del servicio.
 
 #### 13.3.3 Rechazar una solicitud con campos faltantes
 
@@ -851,7 +889,9 @@ curl -i -X POST http://127.0.0.1:8000/predict \
 
 **Resultado obtenido:** HTTP 422.
 
-Pydantic identificó correctamente los nueve campos obligatorios faltantes, utilizando errores de tipo `missing`.
+Pydantic identifica los nueve campos obligatorios faltantes y devuelve errores de validación de tipo `missing`.
+
+Esta verificación comprueba que el endpoint requiere las características necesarias para realizar una predicción.
 
 #### 13.3.4 Rechazar una solicitud con valores fuera de rango
 
@@ -876,7 +916,7 @@ curl -i -X POST http://127.0.0.1:8000/predict \
 
 **Resultado obtenido:** HTTP 422.
 
-Se identificaron correctamente tres errores de validación:
+Se identifican correctamente tres errores de validación:
 
 | Campo | Valor enviado | Restricción |
 |---|---:|---|
@@ -884,7 +924,11 @@ Se identificaron correctamente tres errores de validación:
 | `mes` | 15 | Máximo 12 |
 | `viajes_dia_anterior` | -5 | Mínimo 0 |
 
+Esta prueba confirma que las restricciones definidas en los esquemas de Pydantic se aplican antes de ejecutar la inferencia.
+
 ### 13.4 Resultados de las validaciones HTTP
+
+Las solicitudes HTTP permitieron comprobar la disponibilidad del servicio, la ejecución de predicciones y el rechazo de entradas inválidas.
 
 | Prueba | Código esperado | Código obtenido | Resultado |
 |---|---:|---:|---|
@@ -895,7 +939,9 @@ Se identificaron correctamente tres errores de validación:
 
 Las cuatro solicitudes HTTP produjeron los códigos esperados.
 
-Adicionalmente, se comprobó la recuperación del modelo P1 desde MLflow Model Registry mediante el alias `champion`. Al ejecutar directamente `predecir_demanda()` con los datos sintéticos del ejemplo, se obtuvo:
+Adicionalmente, se comprobó la recuperación del modelo P1 desde MLflow Model Registry mediante el alias `champion`.
+
+Al ejecutar la función `predecir_demanda()` directamente con los datos sintéticos del ejemplo, se obtuvo:
 
 ```json
 {
@@ -905,22 +951,48 @@ Adicionalmente, se comprobó la recuperación del modelo P1 desde MLflow Model R
 }
 ```
 
-Este resultado confirma que el módulo de inferencia puede utilizar el modelo real registrado en MLflow. La diferencia respecto al valor `26.5` devuelto por HTTP se debe a que el endpoint evaluado todavía utiliza una implementación simulada.
+La solicitud HTTP realizada mediante `curl` produjo una estimación equivalente:
 
-### 13.5 Estado de la integración
+```json
+{
+  "estacion_id": 10,
+  "demanda_estimada": 28.341180320830535,
+  "modelo": "mibici-equipo36-p1-demanda@champion"
+}
+```
 
-Las pruebas automatizadas y las solicitudes HTTP verifican el funcionamiento de las validaciones de entrada, los esquemas de salida y el módulo de inferencia.
+La diferencia numérica entre ambos resultados es mínima y corresponde a la precisión de representación de números de punto flotante.
 
-**Pendiente al momento de estas pruebas:** conectar el endpoint `/predict` con `predecir_demanda()` para que las solicitudes HTTP utilicen el modelo P1 registrado en MLflow.
+La coincidencia entre las predicciones confirma que el endpoint FastAPI utiliza correctamente la función de inferencia y el modelo registrado en MLflow.
 
-Una vez realizada esta integración, será necesario:
+### 13.5 Validación de la integración completa
 
-1. Repetir la solicitud HTTP válida y comprobar que devuelve una predicción real.
-2. Actualizar la prueba marcada como `xfail` y verificar que pase.
-3. Ejecutar nuevamente la suite completa de PyTest.
-4. Actualizar los resultados documentados para reflejar el comportamiento definitivo de la API.
+Se verificó el funcionamiento de la API REST de MiBici mediante pruebas automatizadas, solicitudes HTTP reales y ejecución de inferencias con el modelo P1 registrado en MLflow.
 
-Estas verificaciones corresponden al estado de desarrollo previo a la integración final del servicio en el contenedor OCI.
+La integración permite realizar el siguiente flujo de ejecución:
+
+1. **Recepción de la solicitud:** FastAPI recibe los datos enviados mediante `POST /predict`.
+2. **Validación de entrada:** Pydantic verifica la presencia, estructura, tipos y rangos de las características requeridas.
+3. **Ejecución de inferencia:** El endpoint invoca la función `predecir_demanda()`.
+4. **Recuperación del modelo:** El módulo de inferencia utiliza el modelo P1 registrado en MLflow mediante el alias `champion`.
+5. **Generación de la predicción:** El modelo procesa las características y calcula la demanda estimada.
+6. **Construcción de la respuesta:** FastAPI devuelve el identificador de estación, la predicción y el modelo utilizado.
+
+**Resultados generales de validación:**
+
+| Componente | Verificación | Resultado |
+|---|---|---|
+| FastAPI | Disponibilidad del endpoint `/health` | Correcto |
+| Pydantic | Validación de características de entrada | Correcto |
+| API REST | Solicitudes HTTP válidas e inválidas | Correcto |
+| Inferencia P1 | Ejecución de `predecir_demanda()` | Correcto |
+| MLflow Model Registry | Recuperación del modelo `@champion` | Correcto |
+| PyTest | 73 pruebas automatizadas de la API | 73 exitosas |
+| Suite completa | 129 pruebas del proyecto | 129 exitosas |
+
+Los resultados confirman que la API REST ejecuta predicciones reales utilizando el modelo P1 registrado en MLflow y responde correctamente a las solicitudes HTTP evaluadas.
+
+Estas verificaciones proporcionan evidencia del funcionamiento de la aplicación y de su integración con el sistema de gestión de modelos, como parte de la preparación del servicio para su despliegue en un contenedor OCI.
 
 ## 14. Análisis de seguridad y recomendaciones (Bandit y pip-audit)
 
