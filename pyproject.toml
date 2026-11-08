@@ -29,3 +29,7 @@ extend-select = ["I"]  # Add import sorting
 known-first-party = ["mibici"]
 force-sort-within-sections = true
 
+[tool.pytest.ini_options]
+markers = [
+    "integration: pruebas que requieren un servidor MLflow activo"
+]
