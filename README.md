@@ -286,14 +286,14 @@ El alias `champion` identifica la versión seleccionada de cada modelo y permite
 **Registro de modelos:**
 
 ```bash
-MLFLOW_TRACKING_URI=http://127.0.0.0:5000 \
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
 python -m mibici.modeling.register_models
 ```
 
 **Verificación del registro:**
 
 ```bash
-MLFLOW_TRACKING_URI=http://127.0.0.0:5000 \
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
 python -m mibici.modeling.verify_registry
 ```
 
@@ -376,7 +376,8 @@ TC5061-Proyecto-Equipo36/
 │   ├── validate_schema.py # Validación de encabezados
 │   ├── features.py       # Ingeniería de características
 │   ├── plots.py          # Visualizaciones
-│   └── modeling/         # Entrenamiento y predicción
+│   ├── modeling/         # Entrenamiento, registro y predicción
+│   └── serving/          # Recuperación de modelos en MLflow y API REST (FastAPI)
 ├── models/               # Modelos generados
 ├── notebooks/            # Cuadernos Jupyter
 ├── references/           # Diccionarios y referencias
@@ -613,3 +614,739 @@ Entre las contribuciones integradas se encuentran:
 - PR #18: verificaciones básicas de seguridad.
 
 Las contribuciones quedaron registradas en el historial de Git y fueron integradas en la rama principal `main`.
+
+---
+
+## 12. Servicio de inferencia y recuperación de modelos desde MLflow (Actividad 8)
+
+Como primer paso del despliegue del proyecto integrador MiBici, se implementa el módulo de recuperación e inferencia del modelo de predicción de demanda diaria (**P1 — Random Forest**) registrado en **MLflow Model Registry**, preparado para integrarse con la API REST construida en **FastAPI** y ejecutarse dentro de un contenedor compatible con OCI (Podman o Docker).
+
+### 12.1 Modelo seleccionado y estrategia de recuperación (`mibici/serving/model.py`)
+
+| Elemento | Configuración |
+|---|---|
+| **Pregunta de negocio** | P1 — Predicción de demanda diaria por estación (Regresión) |
+| **Algoritmo** | Random Forest Regressor |
+| **Nombre en MLflow Model Registry** | `mibici-equipo36-p1-demanda` |
+| **Alias de producción** | `champion` |
+| **Versión de respaldo** | `2` |
+| **URI por defecto** | `models:/mibici-equipo36-p1-demanda@champion` |
+| **Módulo de inferencia** | `mibici/serving/model.py` |
+
+El módulo [`mibici/serving/model.py`](mibici/serving/model.py) gestiona la carga del modelo y la generación de predicciones mediante las siguientes funciones:
+
+- **`construir_model_uri()`**: Resuelve la URI del modelo priorizando `MIBICI_MODEL_URI` (si se monta o empaqueta el artefacto dentro del contenedor), el alias `models:/mibici-equipo36-p1-demanda@champion` o la versión `models:/mibici-equipo36-p1-demanda/2`.
+- **`cargar_modelo()` y `obtener_modelo()`**: Configuran `MLFLOW_TRACKING_URI` (por defecto `http://127.0.0.1:5000`, o `http://host.containers.internal:5000` desde un contenedor), cargan el modelo con `mlflow.pyfunc.load_model()` manteniendo una instancia en caché en memoria para las peticiones HTTP y aplican respaldo automático a la versión `2` si el alias `champion` no está disponible. Incorporan manejo explícito de errores mediante `ErrorCargaModelo`.
+- **`preparar_caracteristicas_p1()`**: Valida la presencia de las 12 características requeridas (`P1_FEATURE_COLS`), comprueba que no existan valores nulos, infinitos ni fuera de rango y garantiza la conversión a los tipos exactos registrados en la firma (`signature`) de MLflow:
+  - `estacion_id`, `es_fin_de_semana`: `int64` (`long`)
+  - `dia_semana`, `mes`: `int32` (`integer`)
+  - `viajes_dia_anterior`, `viajes_hace_7_dias`, `promedio_7_dias`, `promedio_14_dias`, `viajes_hace_14_dias`, `viajes_hace_28_dias`, `promedio_28_dias`, `promedio_mismo_dia_4_semanas`: `float64` (`double`)
+- **`predecir_demanda()`**: Ejecuta la inferencia con el modelo cargado, asegura predicciones no negativas (`max(0.0, pred)`) y devuelve el diccionario compatible con el esquema de salida `PrediccionSalida` de la API (`estacion_id`, `demanda_estimada`, `modelo`).
+
+### 12.2 Variables de entorno soportadas
+
+| Variable | Valor por defecto | Descripción |
+|---|---|---|
+| `MLFLOW_TRACKING_URI` | `http://127.0.0.1:5000` | Dirección del servidor MLflow Model Registry |
+| `MIBICI_MODEL_NAME` | `mibici-equipo36-p1-demanda` | Nombre del modelo registrado en MLflow |
+| `MIBICI_MODEL_ALIAS` | `champion` | Alias utilizado para recuperar el modelo |
+| `MIBICI_MODEL_VERSION` | `2` | Versión del modelo utilizada como respaldo o consulta explícita |
+| `MIBICI_MODEL_URI` | *(Opcional)* | URI directa o ruta local del artefacto del modelo dentro del contenedor |
+
+### 12.3 Verificación del módulo de inferencia por CLI
+
+Con el servidor MLflow en ejecución (o especificando `--tracking-uri`), es posible verificar la carga del modelo desde el Model Registry y ejecutar una predicción de prueba directamente desde la terminal:
+
+```bash
+# 1. Recuperar el modelo mediante el alias @champion (comportamiento por defecto)
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+python -m mibici.serving.model
+
+# 2. Recuperar el modelo especificando explícitamente la versión 2
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+python -m mibici.serving.model --version 2
+
+# 3. Enviar un JSON personalizado con las 12 características de entrada
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+python -m mibici.serving.model --input-json '{
+  "estacion_id": 10,
+  "dia_semana": 2,
+  "mes": 10,
+  "es_fin_de_semana": 0,
+  "viajes_dia_anterior": 25.0,
+  "viajes_hace_7_dias": 28.0,
+  "promedio_7_dias": 26.5,
+  "promedio_14_dias": 27.3,
+  "viajes_hace_14_dias": 30.0,
+  "viajes_hace_28_dias": 24.0,
+  "promedio_28_dias": 26.8,
+  "promedio_mismo_dia_4_semanas": 27.0
+}'
+```
+
+**Ejemplo de respuesta generada:**
+
+```json
+{
+  "estacion_id": 10,
+  "demanda_estimada": 25.255555555555556,
+  "modelo": "mibici-equipo36-p1-demanda@champion"
+}
+```
+
+### 12.4 Justificación de la estrategia de inferencia
+
+Se adopta un esquema de **inferencia en línea (tiempo real vía petición HTTP REST)** recibiendo las 12 características temporales e históricas previamente calculadas en formato JSON:
+1. **Desacoplamiento del histórico crudo:** Evita que el contenedor de inferencia deba almacenar o reprocesar en cada solicitud los más de 4.3 millones de viajes históricos (`viajes_limpios.parquet`), reduciendo drásticamente el consumo de memoria, el tamaño de la imagen y la latencia de respuesta (milisegundos por petición).
+2. **Flexibilidad de despliegue:** Al parametrizar la carga mediante variables de entorno (`MLFLOW_TRACKING_URI` y `MIBICI_MODEL_URI`), el servicio puede recuperar dinámicamente la versión `@champion` desde el servidor MLflow o operar de forma autónoma con el artefacto del modelo empaquetado en la imagen del contenedor.
+
+## 13. Pruebas y validación de la API REST con FastAPI (Actividad 8)
+
+Se implementaron pruebas automatizadas y verificaciones HTTP para evaluar el funcionamiento de la API REST de MiBici, desarrollada con FastAPI e integrada con el modelo P1 registrado en MLflow Model Registry.
+
+Las pruebas comprueban la disponibilidad del servicio, la validación de las características de entrada mediante Pydantic, la estructura de las respuestas HTTP y la ejecución de inferencias utilizando el modelo de predicción de demanda.
+
+Las pruebas automatizadas se encuentran en `tests/test_api.py` y utilizan **PyTest**, **FastAPI TestClient** y **mocks** para verificar el comportamiento de la aplicación. Esta estrategia permite realizar pruebas unitarias independientes del servidor MLflow, además de pruebas de integración con el modelo real.
+
+### 13.1 Pruebas automatizadas
+
+La suite de pruebas de la API contempla los siguientes escenarios:
+
+| Categoría | Validaciones realizadas |
+|---|---|
+| Disponibilidad del servicio | Verificación del código HTTP 200 y del contenido de `GET /health`. |
+| Solicitudes válidas | Verificación del código HTTP 200, la estructura de salida y la correspondencia del identificador de estación. |
+| Campos obligatorios | Rechazo de solicitudes con características faltantes mediante HTTP 422. |
+| Restricciones numéricas | Validación de rangos permitidos para días, meses, indicadores y características históricas. |
+| Tipos de datos | Rechazo de valores incompatibles con los tipos definidos en Pydantic. |
+| Campos adicionales | Rechazo de propiedades no contempladas en el esquema de entrada. |
+| Valores límite | Aceptación de valores ubicados en los límites permitidos. |
+| Estructura de entrada | Rechazo de cuerpos JSON con estructuras incompatibles. |
+| Integración con inferencia | Verificación de que el endpoint `/predict` utiliza la función `predecir_demanda()`. |
+| Resultados de inferencia | Manejo de predicciones negativas, vacías, no finitas y errores del modelo. |
+| Integración real con MLflow | Recuperación del modelo P1 registrado y ejecución de una predicción real. |
+
+Para las pruebas unitarias se utilizan modelos y funciones simuladas mediante mocks, lo que permite verificar el comportamiento de la aplicación de manera controlada y reproducible.
+
+Adicionalmente, se incluye una prueba de integración que recupera el modelo registrado en MLflow y ejecuta una predicción utilizando las características de entrada correspondientes al problema P1.
+
+**Resultados obtenidos:**
+
+- **73 pruebas de la API ejecutadas exitosamente.**
+- Validación de solicitudes correctas e incorrectas mediante códigos HTTP 200 y 422.
+- Verificación de la conexión entre el endpoint `/predict` y la función de inferencia.
+- Ejecución exitosa de una predicción con el modelo P1 registrado en MLflow.
+
+### 13.2 Ejecución de las pruebas con PyTest
+
+Los siguientes comandos deben ejecutarse desde la raíz del repositorio, con el entorno virtual activado.
+
+**Pruebas sin dependencia de MLflow:**
+
+```bash
+python -m pytest tests/test_api.py -m "not integration" -v
+```
+
+Estas pruebas verifican los endpoints, las validaciones de Pydantic y el comportamiento de inferencia mediante mocks, sin requerir un servidor MLflow activo.
+
+La suite incluye **72 pruebas independientes del servidor MLflow**.
+
+**Prueba de integración real con MLflow:**
+
+Para ejecutar esta prueba, se requiere un servidor MLflow disponible en `http://127.0.0.1:5000`, con el modelo `mibici-equipo36-p1-demanda` registrado y el alias `champion` configurado.
+
+```bash
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+python -m pytest tests/test_api.py -m integration -v
+```
+
+La prueba recupera el modelo desde MLflow Model Registry y ejecuta una predicción utilizando las características de ejemplo de P1.
+
+**Ejecutar todas las pruebas de la API:**
+
+Con MLflow disponible:
+
+```bash
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+python -m pytest tests/test_api.py -v
+```
+
+**Resultado obtenido:**
+
+```text
+73 passed, 1 warning in 3.50s
+```
+
+El marcador `integration`, configurado en `pyproject.toml`, permite separar las pruebas que requieren MLflow de aquellas que pueden ejecutarse de manera independiente.
+
+**Ejecutar todas las pruebas del proyecto:**
+
+```bash
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+python -m pytest tests/ -v
+```
+
+**Resultado obtenido:**
+
+```text
+129 passed, 3 warnings in 28.06s
+```
+
+Este resultado confirma que las pruebas de la API se ejecutan correctamente junto con las pruebas existentes de procesamiento de datos, regresión, clasificación, clustering, reproducibilidad, Deepchecks y seguridad.
+
+Las advertencias registradas corresponden a deprecaciones de compatibilidad entre Starlette TestClient y HTTPX, así como a parámetros de scikit-learn. Estas advertencias no impidieron la ejecución exitosa de las pruebas.
+
+### 13.3 Pruebas HTTP mediante curl
+
+Se realizaron solicitudes HTTP reales contra la aplicación FastAPI para verificar la disponibilidad de los endpoints, la ejecución de inferencias mediante MLflow y el manejo de errores de validación.
+
+Para realizar estas pruebas, se requiere tener disponible el servidor MLflow y ejecutar FastAPI mediante Uvicorn.
+
+**Iniciar el servidor MLflow:**
+
+```bash
+mlflow server \
+  --backend-store-uri "sqlite:///$(pwd)/mlflow.db" \
+  --default-artifact-root "file://$(pwd)/mlartifacts" \
+  --host 127.0.0.1 \
+  --port 5000
+```
+
+**Iniciar el servidor FastAPI en otra terminal:**
+
+```bash
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000 \
+uvicorn mibici.serving.app:app --host 127.0.0.1 --port 8000
+```
+
+Los siguientes comandos deben ejecutarse en una tercera terminal mientras ambos servidores permanecen activos.
+
+#### 13.3.1 Verificar disponibilidad del servicio
+
+```bash
+curl -i http://127.0.0.1:8000/health
+```
+
+**Resultado obtenido:** HTTP 200.
+
+```json
+{
+  "status": "ok",
+  "service": "mibici-api"
+}
+```
+
+Este resultado confirma que la API se encuentra disponible y responde correctamente a las solicitudes de verificación de estado.
+
+#### 13.3.2 Enviar una solicitud de predicción válida
+
+```bash
+curl -i -X POST http://127.0.0.1:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "estacion_id": 10,
+    "dia_semana": 2,
+    "mes": 10,
+    "es_fin_de_semana": 0,
+    "viajes_dia_anterior": 25.0,
+    "viajes_hace_7_dias": 28.0,
+    "promedio_7_dias": 26.5,
+    "promedio_14_dias": 27.3,
+    "viajes_hace_14_dias": 30.0,
+    "viajes_hace_28_dias": 24.0,
+    "promedio_28_dias": 26.8,
+    "promedio_mismo_dia_4_semanas": 27.0
+  }'
+```
+
+**Resultado obtenido:** HTTP 200.
+
+```json
+{
+  "estacion_id": 10,
+  "demanda_estimada": 28.341180320830535,
+  "modelo": "mibici-equipo36-p1-demanda@champion"
+}
+```
+
+La respuesta confirma que el endpoint `/predict` utiliza el modelo P1 registrado en MLflow para generar una estimación de demanda.
+
+El campo `demanda_estimada` representa la predicción generada por el modelo a partir de las características proporcionadas, mientras que `modelo` identifica el modelo registrado y su alias correspondiente.
+
+Los valores utilizados en esta solicitud corresponden a un ejemplo sintético de entrada para verificar el funcionamiento del servicio.
+
+#### 13.3.3 Rechazar una solicitud con campos faltantes
+
+```bash
+curl -i -X POST http://127.0.0.1:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "estacion_id": 10,
+    "dia_semana": 2,
+    "mes": 10
+  }'
+```
+
+**Resultado obtenido:** HTTP 422.
+
+Pydantic identifica los nueve campos obligatorios faltantes y devuelve errores de validación de tipo `missing`.
+
+Esta verificación comprueba que el endpoint requiere las características necesarias para realizar una predicción.
+
+#### 13.3.4 Rechazar una solicitud con valores fuera de rango
+
+```bash
+curl -i -X POST http://127.0.0.1:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "estacion_id": 10,
+    "dia_semana": 8,
+    "mes": 15,
+    "es_fin_de_semana": 0,
+    "viajes_dia_anterior": -5,
+    "viajes_hace_7_dias": 28.0,
+    "promedio_7_dias": 26.5,
+    "promedio_14_dias": 27.3,
+    "viajes_hace_14_dias": 30.0,
+    "viajes_hace_28_dias": 24.0,
+    "promedio_28_dias": 26.8,
+    "promedio_mismo_dia_4_semanas": 27.0
+  }'
+```
+
+**Resultado obtenido:** HTTP 422.
+
+Se identifican correctamente tres errores de validación:
+
+| Campo | Valor enviado | Restricción |
+|---|---:|---|
+| `dia_semana` | 8 | Máximo 6 |
+| `mes` | 15 | Máximo 12 |
+| `viajes_dia_anterior` | -5 | Mínimo 0 |
+
+Esta prueba confirma que las restricciones definidas en los esquemas de Pydantic se aplican antes de ejecutar la inferencia.
+
+### 13.4 Resultados de las validaciones HTTP
+
+Las solicitudes HTTP permitieron comprobar la disponibilidad del servicio, la ejecución de predicciones y el rechazo de entradas inválidas.
+
+| Prueba | Código esperado | Código obtenido | Resultado |
+|---|---:|---:|---|
+| `GET /health` | 200 | 200 | Correcto |
+| `POST /predict` con datos válidos | 200 | 200 | Correcto |
+| `POST /predict` con campos faltantes | 422 | 422 | Correcto |
+| `POST /predict` con valores fuera de rango | 422 | 422 | Correcto |
+
+Las cuatro solicitudes HTTP produjeron los códigos esperados.
+
+Adicionalmente, se comprobó la recuperación del modelo P1 desde MLflow Model Registry mediante el alias `champion`.
+
+Al ejecutar la función `predecir_demanda()` directamente con los datos sintéticos del ejemplo, se obtuvo:
+
+```json
+{
+  "estacion_id": 10,
+  "demanda_estimada": 28.341180320830542,
+  "modelo": "mibici-equipo36-p1-demanda@champion"
+}
+```
+
+La solicitud HTTP realizada mediante `curl` produjo una estimación equivalente:
+
+```json
+{
+  "estacion_id": 10,
+  "demanda_estimada": 28.341180320830535,
+  "modelo": "mibici-equipo36-p1-demanda@champion"
+}
+```
+
+La diferencia numérica entre ambos resultados es mínima y corresponde a la precisión de representación de números de punto flotante.
+
+La coincidencia entre las predicciones confirma que el endpoint FastAPI utiliza correctamente la función de inferencia y el modelo registrado en MLflow.
+
+### 13.5 Validación de la integración completa
+
+Se verificó el funcionamiento de la API REST de MiBici mediante pruebas automatizadas, solicitudes HTTP reales y ejecución de inferencias con el modelo P1 registrado en MLflow.
+
+La integración permite realizar el siguiente flujo de ejecución:
+
+1. **Recepción de la solicitud:** FastAPI recibe los datos enviados mediante `POST /predict`.
+2. **Validación de entrada:** Pydantic verifica la presencia, estructura, tipos y rangos de las características requeridas.
+3. **Ejecución de inferencia:** El endpoint invoca la función `predecir_demanda()`.
+4. **Recuperación del modelo:** El módulo de inferencia utiliza el modelo P1 registrado en MLflow mediante el alias `champion`.
+5. **Generación de la predicción:** El modelo procesa las características y calcula la demanda estimada.
+6. **Construcción de la respuesta:** FastAPI devuelve el identificador de estación, la predicción y el modelo utilizado.
+
+**Resultados generales de validación:**
+
+| Componente | Verificación | Resultado |
+|---|---|---|
+| FastAPI | Disponibilidad del endpoint `/health` | Correcto |
+| Pydantic | Validación de características de entrada | Correcto |
+| API REST | Solicitudes HTTP válidas e inválidas | Correcto |
+| Inferencia P1 | Ejecución de `predecir_demanda()` | Correcto |
+| MLflow Model Registry | Recuperación del modelo `@champion` | Correcto |
+| PyTest | 73 pruebas automatizadas de la API | 73 exitosas |
+| Suite completa | 129 pruebas del proyecto | 129 exitosas |
+
+Los resultados confirman que la API REST ejecuta predicciones reales utilizando el modelo P1 registrado en MLflow y responde correctamente a las solicitudes HTTP evaluadas.
+
+Estas verificaciones proporcionan evidencia del funcionamiento de la aplicación y de su integración con el sistema de gestión de modelos, como parte de la preparación del servicio para su despliegue en un contenedor OCI.
+
+## 14. Análisis de seguridad y recomendaciones (Bandit y pip-audit)
+
+Como parte de las verificaciones del proyecto MiBici, se ejecutaron análisis de seguridad utilizando **Bandit** y **pip-audit**. Estas herramientas permiten identificar posibles riesgos en el código Python y vulnerabilidades conocidas en las dependencias utilizadas.
+
+Los resultados se presentan a continuación, junto con su interpretación y posibles acciones de mejora.
+
+### 14.1 Análisis estático con Bandit
+
+Se utilizó Bandit 1.9.4 para analizar el código Python del paquete `mibici`.
+
+**Comando ejecutado:**
+
+```bash
+python -m bandit -r mibici
+```
+
+**Resultados obtenidos:**
+
+| Severidad | Hallazgos |
+|---|---:|
+| Alta | 0 |
+| Media | 0 |
+| Baja | 12 |
+| **Total** | **12** |
+
+El análisis comprendió **3,955 líneas de código** y no identificó hallazgos de severidad media o alta.
+
+Los 12 avisos de severidad baja corresponden a los siguientes patrones:
+
+| Identificador | Cantidad | Descripción |
+|---|---:|---|
+| B404 | 3 | Uso del módulo `subprocess`. |
+| B603 | 3 | Ejecución de procesos externos mediante `subprocess`. |
+| B607 | 2 | Ejecución de comandos utilizando rutas parciales. |
+| B110 | 4 | Manejo de excepciones mediante `except Exception: pass`. |
+
+**Interpretación y recomendaciones:**
+
+Los avisos asociados con `subprocess` corresponden principalmente a operaciones utilizadas para ejecutar comandos de Python, consultar información de Git y descargar archivos mediante `curl`.
+
+Estas operaciones pueden ser necesarias para el funcionamiento del proyecto. Además, las llamadas identificadas utilizan listas de argumentos en lugar de ejecutar comandos mediante un shell, lo que reduce el riesgo de inyección de comandos.
+
+Como medida preventiva, se recomienda mantener este mecanismo de ejecución, validar los argumentos utilizados y considerar la resolución explícita de las rutas de ejecutables como `git` y `curl`, especialmente en entornos de despliegue.
+
+Por otra parte, los avisos B110 corresponden a bloques de código que capturan excepciones sin registrar información sobre el error. Aunque este comportamiento puede utilizarse para permitir que una operación secundaria no interrumpa el proceso principal, se recomienda incorporar mensajes de advertencia mediante `logging.warning()` para facilitar el diagnóstico y la trazabilidad.
+
+En general, los resultados muestran que **no se detectaron problemas de severidad media o alta**. Los hallazgos de severidad baja representan oportunidades de mejora relacionadas con la ejecución de procesos externos y la observabilidad del manejo de errores.
+
+### 14.2 Auditoría de dependencias con pip-audit
+
+Se utilizó pip-audit 2.10.1 para identificar vulnerabilidades conocidas en las dependencias instaladas en el entorno virtual del proyecto.
+
+**Comando ejecutado:**
+
+```bash
+python -m pip_audit
+```
+
+**Resultados obtenidos:**
+
+La herramienta reportó **10 entradas de vulnerabilidad en cuatro dependencias**.
+
+| Dependencia | Versión analizada | Identificadores reportados | Versión con corrección indicada |
+|---|---|---|---|
+| `certifi` | 2026.7.22 | PYSEC-2026-4320 | 2026.10.18 |
+| `mlflow` | 3.17.1 | CVE-2026-53995 | 3.17.2 |
+| `pyasn1` | 0.6.4 | CVE-2026-119196, CVE-2026-119194, CVE-2026-119197, CVE-2026-119195 | 0.6.5 |
+| `tornado` | 6.5.10 | CVE-2026-116577, CVE-2026-115927, CVE-2026-116578 | 6.6 |
+
+**Nota:** el identificador `PYSEC-2026-4320` apareció dos veces en la salida de pip-audit. Por lo tanto, se reportaron 10 entradas correspondientes a 9 identificadores distintos.
+
+**Interpretación y recomendaciones:**
+
+Las vulnerabilidades identificadas corresponden a dependencias de terceros y no necesariamente implican que exista una vulnerabilidad explotable en los flujos implementados por MiBici. Su impacto depende de las funcionalidades utilizadas, la configuración y el entorno de ejecución.
+
+Como medida de mejora, se recomienda evaluar las actualizaciones indicadas por pip-audit:
+
+- Actualizar `certifi` a la versión 2026.10.18 o posterior compatible.
+- Actualizar `mlflow` a la versión 3.17.2 o posterior compatible.
+- Actualizar `pyasn1` a la versión 0.6.5 o posterior compatible.
+- Actualizar `tornado` a la versión 6.6 o posterior compatible.
+
+Antes de incorporar estas actualizaciones, es recomendable verificar su compatibilidad con las demás dependencias y ejecutar nuevamente las pruebas automatizadas, especialmente aquellas relacionadas con MLflow Model Registry y la inferencia del modelo P1.
+
+También se recomienda incorporar la auditoría de dependencias como parte del proceso de integración continua, de manera que se puedan identificar oportunamente nuevas vulnerabilidades.
+
+Durante la ejecución, pip-audit indicó que el paquete local `mibici` no pudo auditarse mediante PyPI. Esto es esperable para un paquete desarrollado dentro del propio repositorio y no representa, por sí mismo, un hallazgo de vulnerabilidad.
+
+### 14.3 Pruebas automatizadas de seguridad
+
+El proyecto incluye pruebas de seguridad en `tests/test_security.py`, orientadas a verificar:
+
+1. La protección de archivos sensibles mediante `.gitignore`.
+2. La ausencia de ciertos patrones de credenciales directamente definidos en `mibici/config.py`.
+3. La ejecución del análisis estático de Bandit.
+4. La ejecución de la auditoría de dependencias mediante pip-audit.
+
+La prueba de Bandit utiliza el parámetro `-ll`, por lo que considera como criterio de aprobación la ausencia de hallazgos de severidad media o alta.
+
+Por su parte, la prueba de pip-audit permite actualmente los códigos de salida `0` y `1`. Como posible mejora, se recomienda fortalecer este criterio para distinguir entre una auditoría exitosa sin vulnerabilidades, una auditoría con hallazgos y un error de ejecución de la herramienta.
+
+Una alternativa es exigir un resultado sin vulnerabilidades conocidas, una vez evaluadas las actualizaciones correspondientes. Si existen excepciones justificadas, estas deberían documentarse explícitamente y revisarse periódicamente.
+
+También se recomienda comprobar que las herramientas estén instaladas antes de ejecutar las pruebas, para evitar interpretar errores de configuración como resultados satisfactorios.
+## 15. Despliegue de API REST en Contenedor OCI con Docker y Podman (Componente 4)
+
+Se implementó la contenedorización de la API REST desarrollada con FastAPI mediante una imagen compatible con el estándar OCI, definida en el archivo `Containerfile`. El servicio permite realizar inferencias de demanda de viajes por estación utilizando el modelo P1 registrado en MLflow Model Registry.
+
+### 15.1 Justificación de la estrategia de despliegue
+
+1. **Aislamiento y reproducibilidad:** la imagen incluye Python 3.12, las dependencias declaradas en `requirements.txt` y el código fuente de la API.
+
+2. **Desacoplamiento arquitectónico:** FastAPI se ejecuta dentro del contenedor, mientras que MLflow Tracking Server puede operar en el equipo anfitrión o en un servidor externo. La comunicación se configura mediante `MLFLOW_TRACKING_URI`.
+
+3. **Inferencia síncrona:** el endpoint `/predict` recibe las características de entrada, valida los datos mediante Pydantic y ejecuta el modelo P1 para estimar la demanda diaria de viajes.
+
+### 15.2 Especificación del contenedor (`Containerfile`)
+
+El archivo `Containerfile` incorpora las siguientes características:
+
+- **Imagen base:** `python:3.12-slim`.
+- **Dependencias:** instalación mediante `requirements.txt`.
+- **Usuario no privilegiado:** ejecución con `appuser:appgroup`.
+- **Servidor de aplicaciones:** Uvicorn con FastAPI.
+- **Puerto de servicio:** `8000`.
+- **Variable `MLFLOW_TRACKING_URI`:** dirección del servidor MLflow, configurable al iniciar el contenedor.
+- **Healthcheck:** comprobación periódica del endpoint `/health`.
+- **Compatibilidad OCI:** construcción mediante Docker o Podman.
+
+El `Containerfile` declara `PORT=8000`; en la implementación actual, el comando de arranque de Uvicorn utiliza explícitamente el puerto `8000`.
+
+### 15.3 Configuración de red y puertos
+
+El proyecto utiliza el puerto `5000` como configuración predeterminada de MLflow y el puerto `8000` para FastAPI.
+
+| Entorno | Dirección de MLflow |
+|---|---|
+| Ejecución local predeterminada | `http://127.0.0.1:5000` |
+| Docker Desktop | `http://host.docker.internal:5000` |
+| Podman | `http://host.containers.internal:5000` |
+| Ejecución local alternativa | `http://127.0.0.1:5001` |
+
+Si el puerto `5000` está ocupado, puede utilizarse `5001`, actualizando las direcciones correspondientes mediante `MLFLOW_TRACKING_URI`.
+
+Para que un contenedor acceda al servidor MLflow del anfitrión, este debe escuchar en una interfaz accesible desde la red del contenedor. En versiones de MLflow que implementan restricciones de hosts, también deben autorizarse los nombres utilizados por Docker o Podman mediante `--allowed-hosts`.
+
+### 15.4 Inicio del servidor MLflow
+
+Antes de ejecutar la API, debe estar disponible un servidor MLflow con el modelo `mibici-equipo36-p1-demanda` registrado y el alias `champion` configurado.
+
+Se debe utilizar la base de datos SQLite que contiene los experimentos y modelos existentes.
+
+Ejemplo de inicio del servidor en el puerto predeterminado:
+
+```bash
+mlflow server \
+  --backend-store-uri "sqlite:////ruta/al/almacenamiento/mlflow.db" \
+  --host 0.0.0.0 \
+  --port 5000 \
+  --allowed-hosts "localhost:5000,127.0.0.1:5000,host.docker.internal:5000,host.containers.internal:5000"
+```
+
+La ruta `/ruta/al/almacenamiento/mlflow.db` debe sustituirse por la ubicación real de la base de datos.
+
+**Nota:** iniciar MLflow con una base de datos nueva no recupera automáticamente los modelos existentes. También deben estar disponibles los artefactos asociados a los modelos registrados.
+
+Si se utiliza el puerto `5001`, se debe modificar `--port`, la lista de hosts autorizados y la variable `MLFLOW_TRACKING_URI`.
+
+### 15.5 Construcción de la imagen
+
+Desde la raíz del repositorio, ejecutar uno de los siguientes comandos.
+
+**Docker:**
+
+```bash
+docker build -f Containerfile -t mibici-equipo36-api:local .
+```
+
+**Podman:**
+
+```bash
+podman build -f Containerfile -t mibici-equipo36-api:local .
+```
+
+La imagen incluye las dependencias y los módulos necesarios para ejecutar la API.
+
+### 15.6 Acceso a los artefactos del modelo
+
+La API recupera el modelo mediante la URI:
+
+```text
+models:/mibici-equipo36-p1-demanda@champion
+```
+
+Cuando MLflow utiliza artefactos almacenados en rutas locales, el contenedor necesita acceso a dichas rutas.
+
+Durante las pruebas locales se comprobó que la comunicación HTTP con MLflow no era suficiente para recuperar el modelo: también fue necesario montar los artefactos dentro del contenedor.
+
+Para evitar modificaciones sobre los archivos originales, se utilizó una copia temporal:
+
+```bash
+mkdir -p /tmp/mibici-mlruns-docker
+cp -R mlruns/. /tmp/mibici-mlruns-docker/
+```
+
+El directorio copiado debe montarse en la ruta absoluta que MLflow tiene registrada para los artefactos del modelo. Esta ruta puede consultarse mediante los metadatos del Registry.
+
+En las pruebas, MLflow necesitó permisos de escritura para actualizar el archivo auxiliar `registered_model_meta`. Por ello, el volumen temporal se montó con permisos de escritura para el usuario del contenedor.
+
+**Limitación:** este procedimiento corresponde a un entorno de desarrollo local. Para despliegues portables se recomienda utilizar un almacenamiento de artefactos accesible desde el servicio, sin depender de rutas absolutas de un equipo específico.
+
+### 15.7 Ejecución del contenedor
+
+**Ejemplo con Docker Desktop y MLflow en el puerto 5000:**
+
+```bash
+docker run -d \
+  --name mibici-api-test \
+  -p 8000:8000 \
+  -e MLFLOW_TRACKING_URI=http://host.docker.internal:5000 \
+  -v "/ruta/local/de/mlruns:/ruta/registrada/en/mlflow/mlruns" \
+  mibici-equipo36-api:local
+```
+
+Las rutas del volumen deben adaptarse al entorno. El directorio de destino debe coincidir con la ubicación registrada en MLflow.
+
+El usuario del contenedor debe contar con permisos suficientes para leer los artefactos y escribir los archivos auxiliares requeridos por MLflow.
+
+**Ejemplo equivalente con Podman y MLflow en el puerto 5000:**
+
+```bash
+podman run -d \
+  --name mibici-api-test \
+  -p 8000:8000 \
+  -e MLFLOW_TRACKING_URI=http://host.containers.internal:5000 \
+  -v "/ruta/local/de/mlruns:/ruta/registrada/en/mlflow/mlruns" \
+  mibici-equipo36-api:local
+```
+
+La configuración de Podman debe verificarse en el entorno donde se ejecute, especialmente en lo relativo a conectividad y permisos de volúmenes.
+
+### 15.8 Verificación del servicio HTTP
+
+**Comprobar disponibilidad:**
+
+```bash
+curl -i http://localhost:8000/health
+```
+
+Respuesta esperada:
+
+```json
+{
+  "status": "ok",
+  "service": "mibici-api"
+}
+```
+
+**Documentación interactiva:**
+
+```text
+http://localhost:8000/docs
+```
+
+**Ejecutar una predicción:**
+
+```bash
+curl -i -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "estacion_id": 10,
+    "dia_semana": 2,
+    "mes": 10,
+    "es_fin_de_semana": 0,
+    "viajes_dia_anterior": 25,
+    "viajes_hace_7_dias": 28,
+    "promedio_7_dias": 26.5,
+    "promedio_14_dias": 27.2,
+    "viajes_hace_14_dias": 30,
+    "viajes_hace_28_dias": 24,
+    "promedio_28_dias": 26.8,
+    "promedio_mismo_dia_4_semanas": 27.5
+  }'
+```
+
+En la ejecución de prueba con Docker se obtuvo HTTP `200 OK` y la siguiente respuesta:
+
+```json
+{
+  "estacion_id": 10,
+  "demanda_estimada": 28.523759203735008,
+  "modelo": "mibici-equipo36-p1-demanda@champion"
+}
+```
+
+Los datos de entrada corresponden a un ejemplo de prueba. La predicción puede cambiar si se modifica el modelo registrado bajo el alias `champion`.
+
+### 15.9 Validación de datos de entrada
+
+El esquema Pydantic exige las 12 características del modelo P1 y aplica restricciones sobre sus valores.
+
+Por ejemplo, el campo `mes` debe estar comprendido entre `1` y `12`.
+
+Para comprobar la validación:
+
+```bash
+curl -i -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "estacion_id": 10,
+    "mes": 15
+  }'
+```
+
+La API debe responder HTTP `422 Unprocessable Entity`, indicando que el mes está fuera del intervalo permitido y que faltan campos obligatorios.
+
+Esta validación fue comprobada durante las pruebas locales con Docker.
+
+### 15.10 Verificación y administración del contenedor
+
+**Consultar los registros:**
+
+```bash
+docker logs --tail 40 mibici-api-test
+```
+
+**Consultar el estado del healthcheck:**
+
+```bash
+docker inspect --format '{{.State.Health.Status}}' mibici-api-test
+```
+
+**Detener y eliminar el contenedor:**
+
+```bash
+docker stop mibici-api-test
+docker rm mibici-api-test
+```
+
+Los comandos equivalentes pueden ejecutarse con Podman sustituyendo `docker` por `podman`.
+
+### 15.11 Resultados y limitaciones
+
+Durante las pruebas realizadas con Docker Desktop en macOS se verificó:
+
+1. Construcción satisfactoria de la imagen OCI.
+2. Ejecución del servicio mediante un usuario no privilegiado.
+3. Disponibilidad de `/health` y del healthcheck.
+4. Comunicación del contenedor con MLflow Tracking Server.
+5. Recuperación del modelo P1 desde Model Registry mediante el alias `champion`.
+6. Ejecución de una predicción real mediante `/predict`, con respuesta HTTP 200.
+7. Rechazo de entradas inválidas mediante Pydantic, con respuesta HTTP 422.
+
+La implementación cumple el flujo funcional de inferencia desde una API REST contenedorizada. No obstante, cuando los artefactos están almacenados en rutas locales, la ejecución depende de la disponibilidad y permisos de dichas rutas.
+
+La construcción y ejecución con Podman se incluyen como procedimiento compatible con OCI, pero no forman parte de las pruebas realizadas con Docker Desktop descritas en esta sección.
