@@ -1350,3 +1350,28 @@ Durante las pruebas realizadas con Docker Desktop en macOS se verificó:
 La implementación cumple el flujo funcional de inferencia desde una API REST contenedorizada. No obstante, cuando los artefactos están almacenados en rutas locales, la ejecución depende de la disponibilidad y permisos de dichas rutas.
 
 La construcción y ejecución con Podman se incluyen como procedimiento compatible con OCI, pero no forman parte de las pruebas realizadas con Docker Desktop descritas en esta sección.
+
+## 16. Referencias
+
+### 16.1 MLFlow Model Serving
+Consulta la documentación oficial de MLflow sobre cómo servir un modelo registrado como un servicio de inferencia:
+* **MLflow. (2025).** *Deploy MLflow Model to Serving* (documentación oficial de MLflow). MLflow.
+  * **Licencia:** © 2025 MLflow Project, a Series of LF Projects, LLC. Apache License 2.0 (documentación de código abierto).
+  * **Accesibilidad:** Página web con recurso digital que se puede ajustar con la herramienta de zoom del navegador web; incluye ejemplos de código copiables.
+
+### 16.2 FastAPI
+* **Acsany, P. (2025).** *Using FastAPI to Build Python Web APIs* (Real Python). Real Python.
+  * **Licencia:** © 2012–2024 Real Python.
+  * **Accesibilidad:** Recurso digital que se puede ajustar al tamaño del texto con la herramienta zoom del navegador web.
+* **FastAPI. (s.f.).** *Documentación oficial.* FastAPI.
+  * **Licencia:** This project is licensed under the terms of the MIT license.
+  * **Accesibilidad:** Página web con recurso digital que se puede ajustar con la herramienta de zoom del navegador web; incluye ejemplos de código copiables.
+
+### 16.3 Referencia de tecnologías (Contenedores y Podman)
+Para conocer cómo se usa Podman en proyectos de ciencia de datos:
+* **Podman. (s.f.).** *Podman Documentation* (documentación oficial de Podman). Podman.
+  * **Licencia:** Apache License 2.0 (documentación de código abierto).
+  * **Accesibilidad:** Página web con recurso digital que se puede ajustar con la herramienta de zoom del navegador web; incluye ejemplos de código copiables.
+* **Red Hat. (s.f.).** *What is Podman?* Red Hat.
+  * **Licencia:** © 2026 Red Hat, Inc. All rights reserved.
+  * **Accesibilidad:** Recurso digital que se puede ajustar al tamaño del texto con la herramienta zoom del navegador web.
