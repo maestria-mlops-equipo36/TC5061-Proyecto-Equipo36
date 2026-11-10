@@ -203,3 +203,4 @@ cython_debug/
 
 # Reportes HTML interactivos pesados de DeepChecks
 reports/*.html
+!reports/evidently_drift_report.html
