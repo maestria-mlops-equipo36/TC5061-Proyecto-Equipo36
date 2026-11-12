@@ -194,3 +194,4 @@ PyNomaly==0.4.0
 python-utils==4.1.4
 bandit==1.9.4
 pip-audit==2.10.1
+evidently>=0.7.0

@@ -1,0 +1,113 @@
+{
+  "reference_rows": 106836,
+  "current_rows": 10440,
+  "total_columns_evaluated": 13,
+  "dataset_drift_detected": false,
+  "share_drifted_columns": 0.46153846153846156,
+  "drift_by_columns": {
+    "dia_semana": {
+      "column": "dia_semana",
+      "drift_detected": false,
+      "drift_score": 0.0632468067582035,
+      "threshold": 0.05,
+      "stat_test": "Wasserstein distance (normed)",
+      "is_target": false
+    },
+    "es_fin_de_semana": {
+      "column": "es_fin_de_semana",
+      "drift_detected": false,
+      "drift_score": 0.015790899045939374,
+      "threshold": 0.05,
+      "stat_test": "Jensen-Shannon distance",
+      "is_target": false
+    },
+    "estacion_id": {
+      "column": "estacion_id",
+      "drift_detected": false,
+      "drift_score": 0.0,
+      "threshold": 0.05,
+      "stat_test": "Wasserstein distance (normed)",
+      "is_target": false
+    },
+    "mes": {
+      "column": "mes",
+      "drift_detected": true,
+      "drift_score": 1.1628742693684584,
+      "threshold": 0.05,
+      "stat_test": "Wasserstein distance (normed)",
+      "is_target": false
+    },
+    "promedio_14_dias": {
+      "column": "promedio_14_dias",
+      "drift_detected": true,
+      "drift_score": 0.15924701122682708,
+      "threshold": 0.05,
+      "stat_test": "Wasserstein distance (normed)",
+      "is_target": false
+    },
+    "promedio_28_dias": {
+      "column": "promedio_28_dias",
+      "drift_detected": false,
+      "drift_score": 0.09551233443996279,
+      "threshold": 0.05,
+      "stat_test": "Wasserstein distance (normed)",
+      "is_target": false
+    },
+    "promedio_7_dias": {
+      "column": "promedio_7_dias",
+      "drift_detected": true,
+      "drift_score": 0.20901081032739854,
+      "threshold": 0.05,
+      "stat_test": "Wasserstein distance (normed)",
+      "is_target": false
+    },
+    "promedio_mismo_dia_4_semanas": {
+      "column": "promedio_mismo_dia_4_semanas",
+      "drift_detected": false,
+      "drift_score": 0.07037195446821826,
+      "threshold": 0.05,
+      "stat_test": "Wasserstein distance (normed)",
+      "is_target": false
+    },
+    "viajes_dia_anterior": {
+      "column": "viajes_dia_anterior",
+      "drift_detected": true,
+      "drift_score": 0.24241700328570492,
+      "threshold": 0.05,
+      "stat_test": "Wasserstein distance (normed)",
+      "is_target": false
+    },
+    "viajes_hace_14_dias": {
+      "column": "viajes_hace_14_dias",
+      "drift_detected": false,
+      "drift_score": 0.07112572654239345,
+      "threshold": 0.05,
+      "stat_test": "Wasserstein distance (normed)",
+      "is_target": false
+    },
+    "viajes_hace_28_dias": {
+      "column": "viajes_hace_28_dias",
+      "drift_detected": false,
+      "drift_score": 0.02283090276860576,
+      "threshold": 0.05,
+      "stat_test": "Wasserstein distance (normed)",
+      "is_target": false
+    },
+    "viajes_hace_7_dias": {
+      "column": "viajes_hace_7_dias",
+      "drift_detected": true,
+      "drift_score": 0.16248509972903483,
+      "threshold": 0.05,
+      "stat_test": "Wasserstein distance (normed)",
+      "is_target": false
+    },
+    "viajes_iniciados": {
+      "column": "viajes_iniciados",
+      "drift_detected": true,
+      "drift_score": 0.26641220654838677,
+      "threshold": 0.05,
+      "stat_test": "Wasserstein distance (normed)",
+      "is_target": true
+    }
+  }
+}

@@ -1,0 +1,14 @@
+column,drift_detected,drift_score,threshold,stat_test,is_target
+dia_semana,False,0.0632468067582035,0.05,Wasserstein distance (normed),False
+es_fin_de_semana,False,0.015790899045939374,0.05,Jensen-Shannon distance,False
+estacion_id,False,0.0,0.05,Wasserstein distance (normed),False
+mes,True,1.1628742693684584,0.05,Wasserstein distance (normed),False
+promedio_14_dias,True,0.15924701122682708,0.05,Wasserstein distance (normed),False
+promedio_28_dias,False,0.09551233443996279,0.05,Wasserstein distance (normed),False
+promedio_7_dias,True,0.20901081032739854,0.05,Wasserstein distance (normed),False
+promedio_mismo_dia_4_semanas,False,0.07037195446821826,0.05,Wasserstein distance (normed),False
+viajes_dia_anterior,True,0.24241700328570492,0.05,Wasserstein distance (normed),False
+viajes_hace_14_dias,False,0.07112572654239345,0.05,Wasserstein distance (normed),False
+viajes_hace_28_dias,False,0.02283090276860576,0.05,Wasserstein distance (normed),False
+viajes_hace_7_dias,True,0.16248509972903483,0.05,Wasserstein distance (normed),False
+viajes_iniciados,True,0.26641220654838677,0.05,Wasserstein distance (normed),True
