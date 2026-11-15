@@ -1375,3 +1375,18 @@ Para conocer cómo se usa Podman en proyectos de ciencia de datos:
 * **Red Hat. (s.f.).** *What is Podman?* Red Hat.
   * **Licencia:** © 2026 Red Hat, Inc. All rights reserved.
   * **Accesibilidad:** Recurso digital que se puede ajustar al tamaño del texto con la herramienta zoom del navegador web.
+
+## 17. Monitoreo de Data Drift, A/B Testing y Continuous Training
+
+Para garantizar la observabilidad y vigencia del modelo de demanda en producción (`mibici-equipo36-p1-demanda`), se integró un pipeline completo de detección de drift con **Evidently**, comparación experimental **A/B Testing** y gobernanza en **MLflow Model Registry**:
+
+- **Reporte Consolidado (Drift + A/B Testing + Continuous Training):** [`docs/reporte_drift_ab_testing.md`](docs/reporte_drift_ab_testing.md)
+- **Detalle Técnico de Monitoreo Evidently:** [`docs/monitoreo_drift.md`](docs/monitoreo_drift.md) | Dashboard: [`reports/evidently_drift_report.html`](reports/evidently_drift_report.html)
+- **Detalle de Reentrenamiento y A/B Testing:** [`docs/retraining_p1.md`](docs/retraining_p1.md) | [`docs/ab_testing_p1.md`](docs/ab_testing_p1.md)
+
+### Resumen de Resultados
+| Evaluación | Hallazgo Principal | Decisión Técnica |
+| :--- | :--- | :--- |
+| **Data & Target Drift (Evidently)** | Target drift en `viajes_iniciados` (`0.2664`) y feature drift en rezagos cortos (`viajes_dia_anterior = 0.2424`, `promedio_7_dias = 0.2090`). | Alerta alta de negocio; el RMSE del modelo vigente escaló de `7.8936` a `12.2953`. |
+| **A/B Testing (`v2` vs. `v3`)** | El modelo alternativo `v3 (@candidate)` superó a `v2 (@champion)` en **MAE (`-0.35%`)**, **RMSE (`-1.47%`)** y **$R^2$ (`+0.39%`)**. | Promover **Versión 3 (`@candidate`)** como modelo vigente. |
+| **Continuous Training (CT)** | Reentrenar con ventana reciente es necesario para absorber cambios estacionales de régimen. | Implementar **CT disparado por umbral de drift (`Wasserstein > 0.15`)** con validación *Champion/Challenger*. |
