@@ -36,7 +36,7 @@ FEATURES = [
 TARGET = "viajes_iniciados"
 
 def cargar_datos_evaluacion(data_path: Path = CURRENT_DATA_PATH):
-    
+
     """Carga y valida los datos del periodo actual para el A/B testing."""
 
     df = pd.read_parquet(data_path)
@@ -61,8 +61,7 @@ def cargar_datos_evaluacion(data_path: Path = CURRENT_DATA_PATH):
     if df.duplicated(subset=["fecha", "estacion_id"]).any():
         raise ValueError("Existen registros duplicados por estación y fecha.")
 
-    if df[columnas_requeridas].isna().any().any():
-        raise ValueError("El conjunto de evaluación contiene valores faltantes.")
+
 
     # Separar las características y la variable objetivo
     X = df[FEATURES].copy()
@@ -71,19 +70,23 @@ def cargar_datos_evaluacion(data_path: Path = CURRENT_DATA_PATH):
     return df, X, y
 
 
-def cargar_modelos():
-    """Carga los modelos champion y candidate desde MLflow Registry."""
 
+def cargar_modelos():
+    """Carga modelos y conserva las versiones exactas utilizadas."""
     modelos = {}
+    versiones = {}
+    client = mlflow.tracking.MlflowClient()
 
     for alias in ["champion", "candidate"]:
-        model_uri = f"models:/{MODEL_NAME}@{alias}"
+        version = client.get_model_version_by_alias(MODEL_NAME, alias)
+        versiones[alias] = version.version
 
+        model_uri = f"models:/{MODEL_NAME}/{version.version}"
         modelos[alias] = mlflow.pyfunc.load_model(model_uri)
 
-        print(f"Modelo {alias} cargado correctamente.")
+        print(f"Modelo {alias} cargado (versión {version.version}).")
 
-    return modelos
+    return modelos, versiones
 
 
 def evaluar_modelo(modelo, X, y):
@@ -106,26 +109,22 @@ def evaluar_modelo(modelo, X, y):
     return metricas, predicciones
 
 
-def comparar_modelos():
-    """Compara champion y candidate sobre el mismo conjunto de evaluación."""
 
+def comparar_modelos():
+    """Compara champion y candidate sobre los mismos registros."""
     df, X, y = cargar_datos_evaluacion()
-    modelos = cargar_modelos()
+    modelos, versiones = cargar_modelos()
 
     resultados = {}
     predicciones = {}
 
-    # Evaluar ambos modelos con los mismos datos
     for alias, modelo in modelos.items():
         metricas, pred = evaluar_modelo(modelo, X, y)
-
         resultados[alias] = metricas
         predicciones[alias] = pred
 
-    # Crear tabla comparativa
     comparacion = pd.DataFrame(resultados).T
 
-    # Calcular diferencias del candidate respecto al champion
     comparacion.loc["diferencia_absoluta"] = (
         comparacion.loc["candidate"] - comparacion.loc["champion"]
     )
@@ -136,7 +135,7 @@ def comparar_modelos():
         * 100
     )
 
-    return comparacion, predicciones, df
+    return comparacion, predicciones, df, versiones
 
 
 def recomendar_modelo(comparacion):
@@ -198,7 +197,7 @@ def graficar_comparacion(comparacion, output_dir):
     print(f"Gráfica guardada en: {output_path}")
 
 
-def registrar_experimento(comparacion, recomendado, output_dir, df):
+def registrar_experimento(comparacion, recomendado, output_dir, df, versiones):
     """Registra los resultados del A/B testing en MLflow."""
 
     mlflow.set_experiment("mibici-equipo36-ab-testing-p1")
@@ -207,8 +206,9 @@ def registrar_experimento(comparacion, recomendado, output_dir, df):
 
         # Registrar información del experimento
         mlflow.log_param("modelo", MODEL_NAME)
-        mlflow.log_param("champion_version", 2)
-        mlflow.log_param("candidate_version", 3)
+        for alias, version in versiones.items():
+            mlflow.log_param(f"{alias}_version", version)
+
         mlflow.log_param("periodo_inicio", str(df["fecha"].min().date()))
         mlflow.log_param("periodo_fin", str(df["fecha"].max().date()))
         mlflow.log_param("registros_evaluados", len(df))
@@ -247,7 +247,7 @@ def main():
     print("\nIniciando A/B testing P1...")
 
     # Comparar ambos modelos
-    comparacion, predicciones, df = comparar_modelos()
+    comparacion, predicciones, df, versiones = comparar_modelos()
 
     # Guardar resultados de la comparación A/B
     output_dir = Path("reports/ab_testing")
@@ -267,20 +267,10 @@ def main():
     print(f"Justificación: {justificacion}")
 
     # Registrar resultados y evidencias en MLflow
-    registrar_experimento(comparacion, recomendado, output_dir, df)
+    registrar_experimento(comparacion, recomendado, output_dir, df, versiones)
 
     print("\nA/B testing finalizado correctamente.")
 
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-

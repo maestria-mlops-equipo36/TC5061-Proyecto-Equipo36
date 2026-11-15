@@ -89,7 +89,7 @@ def test_datos_duplicados(tmp_path):
 
     # Verificar que la función detecte los duplicados
     with pytest.raises(ValueError, match="registros duplicados"):
-        cargar_datos_evaluacion(data_path) 
+        cargar_datos_evaluacion(data_path)
 
 
 def test_datos_faltantes(tmp_path):
