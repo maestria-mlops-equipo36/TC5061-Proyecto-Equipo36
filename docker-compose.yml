@@ -1,0 +1,52 @@
+services:
+  mlflow:
+    build:
+      context: .
+      dockerfile: Containerfile
+    command:
+      - mlflow
+      - server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+      - --backend-store-uri
+      - sqlite:////app/mlflow.db
+      - --artifacts-destination
+      - /app/mlartifacts
+      - --serve-artifacts
+      - --allowed-hosts
+      - "localhost,127.0.0.1,mlflow,mlflow:5000"
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow.db:/app/mlflow.db
+      - ./mlartifacts:/app/mlartifacts
+      - ./mlruns:/app/mlruns
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:5000/health
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Containerfile
+    ports:
+      - "8000:8000"
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MIBICI_MODEL_NAME: mibici-equipo36-p1-demanda
+      MIBICI_MODEL_ALIAS: champion
+      MIBICI_MODEL_VERSION: "2"
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    restart: unless-stopped

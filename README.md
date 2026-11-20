@@ -1390,3 +1390,184 @@ Para garantizar la observabilidad y vigencia del modelo de demanda en producció
 | **Data & Target Drift (Evidently)** | Target drift en `viajes_iniciados` (`0.2664`) y feature drift en rezagos cortos (`viajes_dia_anterior = 0.2424`, `promedio_7_dias = 0.2090`). | Alerta alta de negocio; el RMSE del modelo vigente escaló de `7.8936` a `12.2953`. |
 | **A/B Testing (`v2` vs. `v3`)** | El modelo alternativo `v3 (@candidate)` superó a `v2 (@champion)` en **MAE (`-0.35%`)**, **RMSE (`-1.47%`)** y **$R^2$ (`+0.39%`)**. | Promover **Versión 3 (`@candidate`)** como modelo vigente. |
 | **Continuous Training (CT)** | Reentrenar con ventana reciente es necesario para absorber cambios estacionales de régimen. | Implementar **CT disparado por umbral de drift (`Wasserstein > 0.15`)** con validación *Champion/Challenger*. |
+
+
+## 18. Orquestación de FastAPI y MLflow con Docker Compose
+
+Se implementó la orquestación de los servicios de inferencia de MiBici mediante **Docker Compose**, permitiendo iniciar conjuntamente la API REST desarrollada con FastAPI y el servidor MLflow Tracking Server.
+
+Esta configuración reutiliza el `Containerfile` existente y centraliza la definición de servicios, variables de entorno, puertos, almacenamiento persistente y dependencias en el archivo `docker-compose.yml`.
+
+### 18.1 Arquitectura y servicios
+
+La arquitectura está compuesta por dos servicios:
+
+| Servicio | Función | Puerto |
+|---|---|---|
+| `api` | Expone los endpoints `/health` y `/predict` mediante FastAPI y Uvicorn. | `8000` |
+| `mlflow` | Proporciona MLflow Tracking Server, Model Registry y acceso a los artefactos de los modelos registrados. | `5000` |
+
+Ambos servicios comparten la red interna creada automáticamente por Docker Compose.
+
+La API utiliza la variable de entorno `MLFLOW_TRACKING_URI=http://mlflow:5000` para comunicarse con MLflow mediante el nombre del servicio, sin depender de direcciones IP fijas ni de la dirección del equipo anfitrión.
+
+La configuración incorpora `depends_on` con la condición `service_healthy`, de modo que FastAPI espera a que MLflow supere su comprobación de salud antes de iniciar.
+
+### 18.2 Prerrequisitos
+
+Para reproducir las pruebas de integración y predicción se requiere:
+
+1. Tener instalado y en ejecución Docker Desktop, con soporte para Docker Compose.
+2. Ejecutar los comandos desde la raíz del repositorio, donde se encuentran `Containerfile`, `requirements.txt` y `docker-compose.yml`.
+3. Disponer de una base de datos `mlflow.db` previamente inicializada y de los artefactos correspondientes en `mlartifacts/`.
+4. Tener registrado en MLflow el modelo `mibici-equipo36-p1-demanda`, con el alias `champion` o la versión de respaldo `2`.
+
+**Importante:** la base de datos de MLflow y los artefactos de los modelos no se incluyen en GitHub. Cada integrante debe preparar su almacenamiento local a partir del proceso de entrenamiento y registro documentado en las secciones 5.5 y 5.10, o utilizar una copia válida del almacenamiento previamente generado por el equipo.
+
+Los scripts `mibici/modeling/register_models.py` y `mibici/modeling/verify_registry.py` permiten registrar y verificar los modelos cuando el entorno y los artefactos necesarios están disponibles.
+
+Docker Compose se encarga de iniciar y conectar los servicios; no ejecuta automáticamente el entrenamiento ni el registro inicial de modelos.
+
+### 18.3 Configuración de Docker Compose
+
+El archivo `docker-compose.yml` define los siguientes componentes:
+
+- **Construcción:** ambos servicios utilizan el `Containerfile` del proyecto y las dependencias declaradas en `requirements.txt`.
+- **Variables de entorno:** FastAPI recibe la dirección interna de MLflow y la configuración del modelo P1 (`MIBICI_MODEL_NAME`, `MIBICI_MODEL_ALIAS` y `MIBICI_MODEL_VERSION`).
+- **Puertos:** MLflow se publica en el puerto `5000` y FastAPI en el `8000`.
+- **Persistencia:** se montan `mlflow.db`, `mlartifacts/` y `mlruns/` desde el equipo anfitrión.
+- **Healthchecks:** se comprueba la disponibilidad de MLflow antes de iniciar la API.
+- **Seguridad:** MLflow restringe los encabezados `Host` permitidos para evitar aceptar indiscriminadamente conexiones con cualquier nombre de host.
+- **Reinicio:** los servicios utilizan la política `unless-stopped`.
+
+La configuración está orientada a un entorno local de desarrollo y validación académica.
+
+### 18.4 Construcción e inicio de los servicios
+
+Desde la raíz del repositorio, con Docker Desktop en ejecución:
+
+```bash
+docker compose up --build
+```
+
+Este comando construye las imágenes necesarias, crea la red interna e inicia ambos servicios.
+
+Para ejecutar los contenedores en segundo plano:
+
+```bash
+docker compose up -d
+```
+
+Para consultar el estado de los servicios:
+
+```bash
+docker compose ps
+```
+
+Una vez iniciados, los servicios quedan disponibles en:
+
+- **FastAPI:** http://localhost:8000
+- **Documentación interactiva de FastAPI:** http://localhost:8000/docs
+- **MLflow Tracking Server:** http://localhost:5000
+
+No es necesario iniciar MLflow o Uvicorn manualmente en terminales separadas cuando se utiliza Docker Compose.
+
+### 18.5 Verificación de la API
+
+Para comprobar que FastAPI está disponible:
+
+```bash
+curl -i http://localhost:8000/health
+```
+
+La respuesta esperada es HTTP 200 con el siguiente contenido:
+
+```json
+{
+  "status": "ok",
+  "service": "mibici-api"
+}
+```
+
+Este endpoint comprueba la disponibilidad de la API, pero no garantiza por sí solo que exista un modelo registrado y disponible para inferencia.
+
+### 18.6 Prueba de predicción con MLflow Model Registry
+
+Con ambos servicios activos y el modelo P1 previamente registrado, se puede enviar una solicitud HTTP al endpoint `/predict`:
+
+```bash
+curl -i -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "estacion_id": 10,
+    "dia_semana": 2,
+    "mes": 10,
+    "es_fin_de_semana": 0,
+    "viajes_dia_anterior": 25.0,
+    "viajes_hace_7_dias": 28.0,
+    "promedio_7_dias": 26.5,
+    "promedio_14_dias": 27.3,
+    "viajes_hace_14_dias": 30.0,
+    "viajes_hace_28_dias": 24.0,
+    "promedio_28_dias": 26.8,
+    "promedio_mismo_dia_4_semanas": 27.0
+  }'
+```
+
+**Resultado observado durante las pruebas con Docker Compose:**
+
+```json
+{
+  "estacion_id": 10,
+  "demanda_estimada": 28.340528323366215,
+  "modelo": "mibici-equipo36-p1-demanda@champion"
+}
+```
+
+La solicitud devolvió **HTTP 200 OK**, confirmando que FastAPI recibió y validó las características, recuperó el modelo registrado en MLflow y ejecutó correctamente la inferencia.
+
+El valor numérico puede variar si se utiliza otra versión del modelo.
+
+### 18.7 Persistencia y reinicio de los contenedores
+
+La configuración utiliza montajes de almacenamiento local para conservar los metadatos y artefactos de MLflow:
+
+| Ruta local | Destino en el contenedor | Contenido |
+|---|---|---|
+| `./mlflow.db` | `/app/mlflow.db` | Base de datos SQLite de MLflow y Model Registry. |
+| `./mlartifacts` | `/app/mlartifacts` | Artefactos de los modelos registrados. |
+| `./mlruns` | `/app/mlruns` | Archivos locales asociados con ejecuciones de MLflow. |
+
+Para detener y eliminar los contenedores y la red:
+
+```bash
+docker compose down
+```
+
+Para volver a iniciar los servicios sin reconstruir las imágenes:
+
+```bash
+docker compose up -d
+```
+
+Durante las pruebas se ejecutó esta secuencia y posteriormente se repitió la solicitud a `/predict`. La API devolvió nuevamente HTTP 200 con el modelo `mibici-equipo36-p1-demanda@champion` y una estimación aproximada de `28.34` viajes.
+
+Esto confirmó que la información necesaria para recuperar el modelo permaneció disponible después de eliminar y recrear los contenedores.
+
+El comando `docker compose down` no elimina los archivos locales montados. No obstante, eliminar manualmente `mlflow.db` o `mlartifacts/` puede provocar la pérdida de metadatos o artefactos necesarios para la inferencia.
+
+### 18.8 Resultados y limitaciones
+
+Las pruebas realizadas con Docker Desktop en macOS permitieron verificar:
+
+1. Construcción e inicio satisfactorios de FastAPI y MLflow mediante un único archivo Compose.
+2. Creación automática de la red interna y comunicación entre servicios.
+3. Disponibilidad de MLflow mediante su healthcheck.
+4. Recuperación del modelo P1 registrado con el alias `champion`.
+5. Ejecución exitosa de una predicción HTTP mediante `/predict`.
+6. Conservación de los datos de MLflow después de eliminar y recrear los contenedores.
+7. Funcionamiento de la inferencia después de restringir los hosts permitidos en MLflow.
+
+La implementación permite reproducir la orquestación de los servicios, siempre que estén disponibles los archivos locales de almacenamiento y los modelos previamente registrados.
+
+**Limitaciones:** Docker Compose no realiza automáticamente el entrenamiento ni el registro inicial de los modelos. Además, esta configuración está diseñada para pruebas locales y no incluye mecanismos de autenticación, almacenamiento remoto administrado ni despliegue en producción.
