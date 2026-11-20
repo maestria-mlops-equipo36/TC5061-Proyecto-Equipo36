@@ -39,9 +39,11 @@ jobs:
           pip install -r requirements.txt
 
       - name: Ejecutar suite de pruebas con PyTest
+        env:
+          PYTHONPATH: .
         run: |
           mkdir -p reports
-          pytest -v --tb=short -m "not integration" --junitxml=reports/junit-pytest.xml
+          python -m pytest -v --tb=short -m "not integration" --junitxml=reports/junit-pytest.xml
 
       - name: Publicar reporte de pruebas (JUnit XML)
         if: always()
