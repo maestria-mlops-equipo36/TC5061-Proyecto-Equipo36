@@ -3,6 +3,7 @@
 **Proyecto integrador — Equipo 36 | Maestría, materia: Operaciones de Aprendizaje Automático (MLOps)**
 
 [![Cookiecutter Data Science](https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter)](https://cookiecutter-data-science.drivendata.org/)
+[![CI/CD - MiBici MLOps](https://github.com/maestria-mlops-equipo36/TC5061-Proyecto-Equipo36/actions/workflows/ci.yml/badge.svg)](https://github.com/maestria-mlops-equipo36/TC5061-Proyecto-Equipo36/actions/workflows/ci.yml)
 
 **Integrantes:**
 - Francisco Gómez Rubio A00710437 **GitHub Maintainer**
@@ -1390,3 +1391,52 @@ Para garantizar la observabilidad y vigencia del modelo de demanda en producció
 | **Data & Target Drift (Evidently)** | Target drift en `viajes_iniciados` (`0.2664`) y feature drift en rezagos cortos (`viajes_dia_anterior = 0.2424`, `promedio_7_dias = 0.2090`). | Alerta alta de negocio; el RMSE del modelo vigente escaló de `7.8936` a `12.2953`. |
 | **A/B Testing (`v2` vs. `v3`)** | El modelo alternativo `v3 (@candidate)` superó a `v2 (@champion)` en **MAE (`-0.35%`)**, **RMSE (`-1.47%`)** y **$R^2$ (`+0.39%`)**. | Promover **Versión 3 (`@candidate`)** como modelo vigente. |
 | **Continuous Training (CT)** | Reentrenar con ventana reciente es necesario para absorber cambios estacionales de régimen. | Implementar **CT disparado por umbral de drift (`Wasserstein > 0.15`)** con validación *Champion/Challenger*. |
+
+
+---
+
+## 19. Pipeline de CI/CD con GitHub Actions
+
+El proyecto cuenta con un pipeline de Integración Continua y construcción automatizada definido en [`.github/workflows/ci.yml`](.github/workflows/ci.yml), ejecutado sobre `ubuntu-latest`.
+
+### 19.1 Disparadores (Triggers)
+
+El workflow se ejecuta automáticamente en los siguientes eventos:
+- **`push`** hacia `main`, cualquier rama de integración (`integration/**`) y ramas de funcionalidades (`feat/**`).
+- **`pull_request`** dirigidos a `main` o `integration/**`.
+- **`workflow_dispatch`** para ejecución manual bajo demanda desde la pestaña **Actions** de GitHub.
+
+Incluye control de concurrencia (`concurrency.cancel-in-progress: true`) para cancelar corridas obsoletas en la misma rama cuando se sube un nuevo commit.
+
+### 19.2 Etapas (Jobs) del pipeline
+
+| Job | Dependencia | Descripción y optimizaciones |
+|---|---|---|
+| **`test`** (Pruebas automatizadas) | Ninguna | Configura Python 3.12 con **caché de `pip`** (`requirements.txt`), instala dependencias, ejecuta `pytest -v --tb=short -m "not integration"` (validación de API, esquemas, modelos P1/P2/P3, DeepChecks, monitoreo de drift, reproducibilidad y seguridad) y publica el reporte `junit-pytest.xml` como artefacto. |
+| **`build-docker`** (Imagen Docker y smoke tests) | `needs: test` | Configura Docker Buildx y construye la imagen de la API desde `Containerfile` con **caché de capas en GitHub Actions (`type=gha`)** sin publicación a un registry externo (`push: false`). Posteriormente levanta el contenedor y verifica `GET /health` (`{"status":"ok","service":"mibici-api"}`). Cuando `docker-compose.yml` está presente, valida la sintaxis (`docker compose config -q`), levanta el stack completo (MLflow + FastAPI), verifica los endpoints `/health` de ambos servicios y detiene los contenedores al finalizar. |
+
+### 19.3 Cómo consultar los resultados y evidencia de ejecución
+
+1. Abrir el repositorio en GitHub y seleccionar la pestaña **Actions**.
+2. Seleccionar el workflow **CI/CD - MiBici MLOps** en el panel izquierdo.
+3. Hacer clic en la ejecución correspondiente al commit o Pull Request para inspeccionar:
+   - El estado en verde de los jobs **`Pruebas automatizadas (PyTest)`** y **`Construcción de imagen Docker y smoke tests`**.
+   - Los logs detallados de cada paso (instalación con caché, resultados de PyTest, build de `Containerfile`, smoke test de `/health` y validación de Docker Compose).
+   - El artefacto descargable **`pytest-results`** (`reports/junit-pytest.xml`) en la sección **Artifacts** del resumen de la corrida.
+
+### 19.4 Reproducción local de las validaciones de CI
+
+Para ejecutar exactamente el mismo conjunto de pruebas que corre en GitHub Actions antes de abrir un Pull Request:
+
+```bash
+pytest -v --tb=short -m "not integration"
+```
+
+Para validar localmente la construcción de la imagen Docker y el endpoint de salud:
+
+```bash
+docker build -f Containerfile -t mibici-api:local .
+docker run -d --name mibici-api-smoke -p 8000:8000 mibici-api:local
+curl -f http://127.0.0.1:8000/health
+docker rm -f mibici-api-smoke
+```
