@@ -1620,3 +1620,42 @@ docker run -d --name mibici-api-smoke -p 8000:8000 mibici-api:local
 curl -f http://127.0.0.1:8000/health
 docker rm -f mibici-api-smoke
 ```
+
+## 20. Pruebas de Carga y Estrés de la API con Locust
+
+Para validar la estabilidad, latencia y capacidad de respuesta del servicio de inferencia (`FastAPI` + `Uvicorn` + `MLflow`) ante tráfico concurrente, se implementó una suite de pruebas de carga utilizando **Locust** (`locustfile.py`).
+
+### 20.1 Diseño de la simulación (`locustfile.py`)
+
+- **Perfil de usuario (`MiBiciAPIUser`):** Simula clientes concurrentes con tiempos de espera aleatorios (`between(0.2, 1.0)` segundos) y una mezcla realista de tráfico:
+  - **90% (`@task(9)`):** Peticiones `POST /predict` con payloads sintéticos válidos (`estacion_id` entre 1 y 348, variables temporales y rezagos históricos consistentes), verificando respuesta HTTP `200` y `demanda_estimada >= 0`.
+  - **10% (`@task(1)`):** Peticiones `GET /health` para monitoreo continuo de disponibilidad.
+- **Escenarios progresivos:** Ejecución en modo *headless* durante 30 segundos por nivel de concurrencia (`spawn-rate = 5` usuarios/s) contra el stack levantado mediante Docker Compose (`http://localhost:8000`).
+
+### 20.2 Resultados por nivel de concurrencia
+
+| Escenario | Peticiones Totales | Fallos | Throughput (`req/s`) | Mediana P50 (`ms`) | P95 (`ms`) | P99 (`ms`) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **10 usuarios concurrentes** | 358 | 0 (0.00%) | 12.41 | 14 | 28 | 6,500* |
+| **25 usuarios concurrentes** | 1,164 | 0 (0.00%) | 39.07 | 9 | 24 | 36 |
+| **50 usuarios concurrentes** | 2,092 | 0 (0.00%) | 70.14 | 7 | 20 | 36 |
+
+*\*Nota: En el escenario inicial de 10 usuarios, la primera petición `POST /predict` disparó la carga en frío (*cold start*) del modelo desde MLflow (~6.48 s), estabilizándose inmediatamente después en una mediana de 14–15 ms.*
+
+#### Visualización de Throughput y Percentiles de Latencia
+
+![Throughput por Concurrencia](reports/figures/load_testing/throughput_vs_users.png)
+
+![Percentiles de Latencia](reports/figures/load_testing/latency_percentiles.png)
+
+### 20.3 Hallazgos y cuello de botella observado
+
+1. **Tasa de error nula (0.00%):** En los tres niveles de carga (3,614 peticiones acumuladas), el servicio mantuvo un 100% de disponibilidad sin errores HTTP `5xx` ni *timeouts*.
+2. **Escalabilidad lineal hasta 50 usuarios:** El rendimiento escaló de **12.41 req/s** (10 usuarios) a **70.14 req/s** (50 usuarios), manteniendo la latencia mediana por debajo de **15 ms** y el percentil 95 (`P95`) en **20–28 ms**.
+3. **Cuello de botella identificado (*Cold Start*):** La carga perezosa (*lazy loading*) del modelo durante la primera invocación a `/predict` introduce un pico puntual de latencia (~6.5 s). En un entorno productivo con autoescalado horizontal, se recomienda pre-cargar el modelo durante el evento `startup` de FastAPI (`lifespan`) para eliminar picos en frío en los primeros usuarios.
+
+### 20.4 Reproducción local de las pruebas de carga
+
+1. Levantar la infraestructura con Docker Compose:
+   ```bash
+   docker compose up -d --build
