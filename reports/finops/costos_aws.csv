@@ -1,0 +1,4 @@
+usuarios,instancia_aws,region,predicciones_exitosas_prueba,throughput_predict_rps,predicciones_hora_estimadas,costo_ec2_hora_usd,costo_ec2_mes_usd,costo_ec2_1000_predicciones_usd,cpu_promedio_api_pct,memoria_total_promedio_mib
+10,t3.xlarge,us-east-1,491,5.5097,19834.99,0.1664,121.47,0.008389,132.6,2781.39
+25,t3.xlarge,us-east-1,454,5.1653,18595.19,0.1664,121.47,0.008949,201.2,2798.78
+50,t3.xlarge,us-east-1,402,4.5198,16271.17,0.1664,121.47,0.010227,231.43,2808.12

@@ -1,0 +1,8 @@
+timestamp_utc,scenario,container_id,container_name,cpu_percent,memory_used_mib,memory_limit_mib,memory_percent
+2026-11-21T04:24:34.603440+00:00,prueba_inicial,508e74cdc5b9,mibici-finops-test,0.0,1.789,7937.024,0.02
+2026-11-21T04:24:37.713425+00:00,prueba_inicial,508e74cdc5b9,mibici-finops-test,0.0,1.789,7937.024,0.02
+2026-11-21T04:24:40.814221+00:00,prueba_inicial,508e74cdc5b9,mibici-finops-test,0.0,1.789,7937.024,0.02
+2026-11-21T04:24:44.030432+00:00,prueba_inicial,508e74cdc5b9,mibici-finops-test,0.0,1.789,7937.024,0.02
+2026-11-21T04:24:47.133732+00:00,prueba_inicial,508e74cdc5b9,mibici-finops-test,0.0,1.789,7937.024,0.02
+2026-11-21T04:24:50.245530+00:00,prueba_inicial,508e74cdc5b9,mibici-finops-test,0.0,1.789,7937.024,0.02
+2026-11-21T04:24:53.375861+00:00,prueba_inicial,508e74cdc5b9,mibici-finops-test,0.0,1.789,7937.024,0.02

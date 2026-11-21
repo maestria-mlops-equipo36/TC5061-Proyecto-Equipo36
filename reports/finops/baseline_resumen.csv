@@ -1,0 +1,3 @@
+contenedor,muestras,cpu_promedio,cpu_maximo,memoria_promedio_mib,memoria_maxima_mib
+mibici-finops-api-1,9,0.33,0.51,417.27,417.7
+mibici-finops-mlflow-1,9,4.3,5.76,2345.76,2345.98
