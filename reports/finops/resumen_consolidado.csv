@@ -1,0 +1,4 @@
+usuarios,predicciones_exitosas,errores,throughput_predict_rps,latencia_promedio_ms,latencia_p95_ms,cpu_promedio_api_pct,cpu_maxima_api_pct,memoria_promedio_api_mib,memoria_maxima_api_mib,muestras_api,cpu_promedio_mlflow_pct,cpu_maxima_mlflow_pct,memoria_promedio_mlflow_mib,memoria_maxima_mlflow_mib,muestras_mlflow,memoria_total_promedio_mib
+10,491,0,5.509718544604776,1150.525087433822,1500.0,132.6,142.69,423.12,425.3,14,2.39,8.08,2358.27,2358.27,14,2781.39
+25,454,0,5.165330624392977,4054.8765937731137,5100.0,201.2,239.94,438.85,440.8,13,2.36,5.46,2359.93,2360.32,13,2798.78
+50,402,0,4.519769789234233,9576.655371589537,12000.0,231.43,272.92,448.39,452.1,14,2.4,2.89,2359.73,2360.32,14,2808.12

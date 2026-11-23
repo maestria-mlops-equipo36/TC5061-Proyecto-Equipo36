@@ -1,0 +1,9 @@
+services:
+  api:
+    environment:
+      MIBICI_MODEL_URI: /app/modelos/p1-champion
+    volumes:
+      - type: bind
+        source: ${MIBICI_MODEL_ARTIFACTS_PATH:?Define MIBICI_MODEL_ARTIFACTS_PATH}
+        target: /app/modelos/p1-champion
+        read_only: true
