@@ -27,8 +27,18 @@ def test_health_response():
     }
 
 
-def test_predict_entrada_valida():
+def test_predict_entrada_valida(monkeypatch):
     """Verifica que una solicitud válida devuelve HTTP 200."""
+
+    monkeypatch.setattr(
+        serving_model,
+        "predecir_demanda",
+        lambda datos, modelo=None: {
+            "estacion_id": datos["estacion_id"],
+            "demanda_estimada": 28.34,
+            "modelo": "mibici-equipo36-p1-demanda@champion",
+        },
+    )
 
     datos = {
         "estacion_id": 10,
@@ -190,8 +200,18 @@ def test_predict_tipos_incompatibles(campo, valor_invalido):
         ("promedio_mismo_dia_4_semanas", 0.0),
     ],
 )
-def test_predict_valores_limite(campo, valor_limite):
+def test_predict_valores_limite(campo, valor_limite, monkeypatch):
     """Verifica que la API acepta los límites permitidos."""
+
+    monkeypatch.setattr(
+        serving_model,
+        "predecir_demanda",
+        lambda datos, modelo=None: {
+            "estacion_id": datos["estacion_id"],
+            "demanda_estimada": 15.0,
+            "modelo": "mibici-equipo36-p1-demanda@champion",
+        },
+    )
 
     datos = DATOS_VALIDOS.copy()
     datos[campo] = valor_limite

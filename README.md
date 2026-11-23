@@ -3,6 +3,7 @@
 **Proyecto integrador — Equipo 36 | Maestría, materia: Operaciones de Aprendizaje Automático (MLOps)**
 
 [![Cookiecutter Data Science](https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter)](https://cookiecutter-data-science.drivendata.org/)
+[![CI/CD - MiBici MLOps](https://github.com/maestria-mlops-equipo36/TC5061-Proyecto-Equipo36/actions/workflows/ci.yml/badge.svg)](https://github.com/maestria-mlops-equipo36/TC5061-Proyecto-Equipo36/actions/workflows/ci.yml)
 
 **Integrantes:**
 - Francisco Gómez Rubio A00710437 **GitHub Maintainer**
@@ -1390,3 +1391,271 @@ Para garantizar la observabilidad y vigencia del modelo de demanda en producció
 | **Data & Target Drift (Evidently)** | Target drift en `viajes_iniciados` (`0.2664`) y feature drift en rezagos cortos (`viajes_dia_anterior = 0.2424`, `promedio_7_dias = 0.2090`). | Alerta alta de negocio; el RMSE del modelo vigente escaló de `7.8936` a `12.2953`. |
 | **A/B Testing (`v2` vs. `v3`)** | El modelo alternativo `v3 (@candidate)` superó a `v2 (@champion)` en **MAE (`-0.35%`)**, **RMSE (`-1.47%`)** y **$R^2$ (`+0.39%`)**. | Promover **Versión 3 (`@candidate`)** como modelo vigente. |
 | **Continuous Training (CT)** | Reentrenar con ventana reciente es necesario para absorber cambios estacionales de régimen. | Implementar **CT disparado por umbral de drift (`Wasserstein > 0.15`)** con validación *Champion/Challenger*. |
+
+
+## 18. Orquestación de FastAPI y MLflow con Docker Compose
+
+Se implementó la orquestación de los servicios de inferencia de MiBici mediante **Docker Compose**, permitiendo iniciar conjuntamente la API REST desarrollada con FastAPI y el servidor MLflow Tracking Server.
+
+Esta configuración reutiliza el `Containerfile` existente y centraliza la definición de servicios, variables de entorno, puertos, almacenamiento persistente y dependencias en el archivo `docker-compose.yml`.
+
+### 18.1 Arquitectura y servicios
+
+La arquitectura está compuesta por dos servicios:
+
+| Servicio | Función | Puerto |
+|---|---|---|
+| `api` | Expone los endpoints `/health` y `/predict` mediante FastAPI y Uvicorn. | `8000` |
+| `mlflow` | Proporciona MLflow Tracking Server, Model Registry y acceso a los artefactos de los modelos registrados. | `5000` |
+
+Ambos servicios comparten la red interna creada automáticamente por Docker Compose.
+
+La API utiliza la variable de entorno `MLFLOW_TRACKING_URI=http://mlflow:5000` para comunicarse con MLflow mediante el nombre del servicio, sin depender de direcciones IP fijas ni de la dirección del equipo anfitrión.
+
+La configuración incorpora `depends_on` con la condición `service_healthy`, de modo que FastAPI espera a que MLflow supere su comprobación de salud antes de iniciar.
+
+### 18.2 Prerrequisitos
+
+Para reproducir las pruebas de integración y predicción se requiere:
+
+1. Tener instalado y en ejecución Docker Desktop, con soporte para Docker Compose.
+2. Ejecutar los comandos desde la raíz del repositorio, donde se encuentran `Containerfile`, `requirements.txt` y `docker-compose.yml`.
+3. Disponer de una base de datos `mlflow.db` previamente inicializada y de los artefactos correspondientes en `mlartifacts/`.
+4. Tener registrado en MLflow el modelo `mibici-equipo36-p1-demanda`, con el alias `champion` o la versión de respaldo `2`.
+
+**Importante:** la base de datos de MLflow y los artefactos de los modelos no se incluyen en GitHub. Cada integrante debe preparar su almacenamiento local a partir del proceso de entrenamiento y registro documentado en las secciones 5.5 y 5.10, o utilizar una copia válida del almacenamiento previamente generado por el equipo.
+
+Los scripts `mibici/modeling/register_models.py` y `mibici/modeling/verify_registry.py` permiten registrar y verificar los modelos cuando el entorno y los artefactos necesarios están disponibles.
+
+Docker Compose se encarga de iniciar y conectar los servicios; no ejecuta automáticamente el entrenamiento ni el registro inicial de modelos.
+
+### 18.3 Configuración de Docker Compose
+
+El archivo `docker-compose.yml` define los siguientes componentes:
+
+- **Construcción:** ambos servicios utilizan el `Containerfile` del proyecto y las dependencias declaradas en `requirements.txt`.
+- **Variables de entorno:** FastAPI recibe la dirección interna de MLflow y la configuración del modelo P1 (`MIBICI_MODEL_NAME`, `MIBICI_MODEL_ALIAS` y `MIBICI_MODEL_VERSION`).
+- **Puertos:** MLflow se publica en el puerto `5000` y FastAPI en el `8000`.
+- **Persistencia:** se montan `mlflow.db`, `mlartifacts/` y `mlruns/` desde el equipo anfitrión.
+- **Healthchecks:** se comprueba la disponibilidad de MLflow antes de iniciar la API.
+- **Seguridad:** MLflow restringe los encabezados `Host` permitidos para evitar aceptar indiscriminadamente conexiones con cualquier nombre de host.
+- **Reinicio:** los servicios utilizan la política `unless-stopped`.
+
+La configuración está orientada a un entorno local de desarrollo y validación académica.
+
+### 18.4 Construcción e inicio de los servicios
+
+Desde la raíz del repositorio, con Docker Desktop en ejecución:
+
+```bash
+docker compose up --build
+```
+
+Este comando construye las imágenes necesarias, crea la red interna e inicia ambos servicios.
+
+Para ejecutar los contenedores en segundo plano:
+
+```bash
+docker compose up -d
+```
+
+Para consultar el estado de los servicios:
+
+```bash
+docker compose ps
+```
+
+Una vez iniciados, los servicios quedan disponibles en:
+
+- **FastAPI:** http://localhost:8000
+- **Documentación interactiva de FastAPI:** http://localhost:8000/docs
+- **MLflow Tracking Server:** http://localhost:5000
+
+No es necesario iniciar MLflow o Uvicorn manualmente en terminales separadas cuando se utiliza Docker Compose.
+
+### 18.5 Verificación de la API
+
+Para comprobar que FastAPI está disponible:
+
+```bash
+curl -i http://localhost:8000/health
+```
+
+La respuesta esperada es HTTP 200 con el siguiente contenido:
+
+```json
+{
+  "status": "ok",
+  "service": "mibici-api"
+}
+```
+
+Este endpoint comprueba la disponibilidad de la API, pero no garantiza por sí solo que exista un modelo registrado y disponible para inferencia.
+
+### 18.6 Prueba de predicción con MLflow Model Registry
+
+Con ambos servicios activos y el modelo P1 previamente registrado, se puede enviar una solicitud HTTP al endpoint `/predict`:
+
+```bash
+curl -i -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "estacion_id": 10,
+    "dia_semana": 2,
+    "mes": 10,
+    "es_fin_de_semana": 0,
+    "viajes_dia_anterior": 25.0,
+    "viajes_hace_7_dias": 28.0,
+    "promedio_7_dias": 26.5,
+    "promedio_14_dias": 27.3,
+    "viajes_hace_14_dias": 30.0,
+    "viajes_hace_28_dias": 24.0,
+    "promedio_28_dias": 26.8,
+    "promedio_mismo_dia_4_semanas": 27.0
+  }'
+```
+
+**Resultado observado durante las pruebas con Docker Compose:**
+
+```json
+{
+  "estacion_id": 10,
+  "demanda_estimada": 28.340528323366215,
+  "modelo": "mibici-equipo36-p1-demanda@champion"
+}
+```
+
+La solicitud devolvió **HTTP 200 OK**, confirmando que FastAPI recibió y validó las características, recuperó el modelo registrado en MLflow y ejecutó correctamente la inferencia.
+
+El valor numérico puede variar si se utiliza otra versión del modelo.
+
+### 18.7 Persistencia y reinicio de los contenedores
+
+La configuración utiliza montajes de almacenamiento local para conservar los metadatos y artefactos de MLflow:
+
+| Ruta local | Destino en el contenedor | Contenido |
+|---|---|---|
+| `./mlflow.db` | `/app/mlflow.db` | Base de datos SQLite de MLflow y Model Registry. |
+| `./mlartifacts` | `/app/mlartifacts` | Artefactos de los modelos registrados. |
+| `./mlruns` | `/app/mlruns` | Archivos locales asociados con ejecuciones de MLflow. |
+
+Para detener y eliminar los contenedores y la red:
+
+```bash
+docker compose down
+```
+
+Para volver a iniciar los servicios sin reconstruir las imágenes:
+
+```bash
+docker compose up -d
+```
+
+Durante las pruebas se ejecutó esta secuencia y posteriormente se repitió la solicitud a `/predict`. La API devolvió nuevamente HTTP 200 con el modelo `mibici-equipo36-p1-demanda@champion` y una estimación aproximada de `28.34` viajes.
+
+Esto confirmó que la información necesaria para recuperar el modelo permaneció disponible después de eliminar y recrear los contenedores.
+
+El comando `docker compose down` no elimina los archivos locales montados. No obstante, eliminar manualmente `mlflow.db` o `mlartifacts/` puede provocar la pérdida de metadatos o artefactos necesarios para la inferencia.
+
+### 18.8 Resultados y limitaciones
+
+Las pruebas realizadas con Docker Desktop en macOS permitieron verificar:
+
+1. Construcción e inicio satisfactorios de FastAPI y MLflow mediante un único archivo Compose.
+2. Creación automática de la red interna y comunicación entre servicios.
+3. Disponibilidad de MLflow mediante su healthcheck.
+4. Recuperación del modelo P1 registrado con el alias `champion`.
+5. Ejecución exitosa de una predicción HTTP mediante `/predict`.
+6. Conservación de los datos de MLflow después de eliminar y recrear los contenedores.
+7. Funcionamiento de la inferencia después de restringir los hosts permitidos en MLflow.
+
+La implementación permite reproducir la orquestación de los servicios, siempre que estén disponibles los archivos locales de almacenamiento y los modelos previamente registrados.
+
+**Limitaciones:** Docker Compose no realiza automáticamente el entrenamiento ni el registro inicial de los modelos. Además, esta configuración está diseñada para pruebas locales y no incluye mecanismos de autenticación, almacenamiento remoto administrado ni despliegue en producción.
+
+---
+
+## 19. Pipeline de CI/CD con GitHub Actions
+
+El proyecto cuenta con un pipeline de Integración Continua y construcción automatizada definido en [`.github/workflows/ci.yml`](.github/workflows/ci.yml), ejecutado sobre `ubuntu-latest`.
+
+### 19.1 Disparadores (Triggers)
+
+El workflow se ejecuta automáticamente en los siguientes eventos:
+- **`push`** hacia `main`, cualquier rama de integración (`integration/**`) y ramas de funcionalidades (`feat/**`).
+- **`pull_request`** dirigidos a `main` o `integration/**`.
+- **`workflow_dispatch`** para ejecución manual bajo demanda desde la pestaña **Actions** de GitHub.
+
+Incluye control de concurrencia (`concurrency.cancel-in-progress: true`) para cancelar corridas obsoletas en la misma rama cuando se sube un nuevo commit.
+
+### 19.2 Etapas (Jobs) del pipeline
+
+| Job | Dependencia | Descripción y optimizaciones |
+|---|---|---|
+| **`test`** (Pruebas automatizadas) | Ninguna | Configura Python 3.12 con **caché de `pip`** (`requirements.txt`), instala dependencias, ejecuta `pytest -v --tb=short -m "not integration"` (validación de API, esquemas, modelos P1/P2/P3, DeepChecks, monitoreo de drift, reproducibilidad y seguridad) y publica el reporte `junit-pytest.xml` como artefacto. |
+| **`build-docker`** (Imagen Docker y smoke tests) | `needs: test` | Configura Docker Buildx y construye la imagen de la API desde `Containerfile` con **caché de capas en GitHub Actions (`type=gha`)** sin publicación a un registry externo (`push: false`). Posteriormente levanta el contenedor y verifica `GET /health` (`{"status":"ok","service":"mibici-api"}`). Cuando `docker-compose.yml` está presente, valida la sintaxis (`docker compose config -q`), levanta el stack completo (MLflow + FastAPI), verifica los endpoints `/health` de ambos servicios y detiene los contenedores al finalizar. |
+
+### 19.3 Cómo consultar los resultados y evidencia de ejecución
+
+1. Abrir el repositorio en GitHub y seleccionar la pestaña **Actions**.
+2. Seleccionar el workflow **CI/CD - MiBici MLOps** en el panel izquierdo.
+3. Hacer clic en la ejecución correspondiente al commit o Pull Request para inspeccionar:
+   - El estado en verde de los jobs **`Pruebas automatizadas (PyTest)`** y **`Construcción de imagen Docker y smoke tests`**.
+   - Los logs detallados de cada paso (instalación con caché, resultados de PyTest, build de `Containerfile`, smoke test de `/health` y validación de Docker Compose).
+   - El artefacto descargable **`pytest-results`** (`reports/junit-pytest.xml`) en la sección **Artifacts** del resumen de la corrida.
+
+### 19.4 Reproducción local de las validaciones de CI
+
+Para ejecutar exactamente el mismo conjunto de pruebas que corre en GitHub Actions antes de abrir un Pull Request:
+
+```bash
+pytest -v --tb=short -m "not integration"
+```
+
+Para validar localmente la construcción de la imagen Docker y el endpoint de salud:
+
+```bash
+docker build -f Containerfile -t mibici-api:local .
+docker run -d --name mibici-api-smoke -p 8000:8000 mibici-api:local
+curl -f http://127.0.0.1:8000/health
+docker rm -f mibici-api-smoke
+```
+
+## 20. Pruebas de Carga y Estrés de la API con Locust
+
+Para validar la estabilidad, latencia y capacidad de respuesta del servicio de inferencia (`FastAPI` + `Uvicorn` + `MLflow`) ante tráfico concurrente, se implementó una suite de pruebas de carga utilizando **Locust** (`locustfile.py`).
+
+### 20.1 Diseño de la simulación (`locustfile.py`)
+
+- **Perfil de usuario (`MiBiciAPIUser`):** Simula clientes concurrentes con tiempos de espera aleatorios (`between(0.2, 1.0)` segundos) y una mezcla realista de tráfico:
+  - **90% (`@task(9)`):** Peticiones `POST /predict` con payloads sintéticos válidos (`estacion_id` entre 1 y 348, variables temporales y rezagos históricos consistentes), verificando respuesta HTTP `200` y `demanda_estimada >= 0`.
+  - **10% (`@task(1)`):** Peticiones `GET /health` para monitoreo continuo de disponibilidad.
+- **Escenarios progresivos:** Ejecución en modo *headless* durante 30 segundos por nivel de concurrencia (`spawn-rate = 5` usuarios/s) contra el stack levantado mediante Docker Compose (`http://localhost:8000`).
+
+### 20.2 Resultados por nivel de concurrencia
+
+| Escenario | Peticiones Totales | Fallos | Throughput (`req/s`) | Mediana P50 (`ms`) | P95 (`ms`) | P99 (`ms`) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **10 usuarios concurrentes** | 358 | 0 (0.00%) | 12.41 | 14 | 28 | 6,500* |
+| **25 usuarios concurrentes** | 1,164 | 0 (0.00%) | 39.07 | 9 | 24 | 36 |
+| **50 usuarios concurrentes** | 2,092 | 0 (0.00%) | 70.14 | 7 | 20 | 36 |
+
+*\*Nota: En el escenario inicial de 10 usuarios, la primera petición `POST /predict` disparó la carga en frío (*cold start*) del modelo desde MLflow (~6.48 s), estabilizándose inmediatamente después en una mediana de 14–15 ms.*
+
+#### Visualización de Throughput y Percentiles de Latencia
+
+![Throughput por Concurrencia](reports/figures/load_testing/throughput_vs_users.png)
+
+![Percentiles de Latencia](reports/figures/load_testing/latency_percentiles.png)
+
+### 20.3 Hallazgos y cuello de botella observado
+
+1. **Tasa de error nula (0.00%):** En los tres niveles de carga (3,614 peticiones acumuladas), el servicio mantuvo un 100% de disponibilidad sin errores HTTP `5xx` ni *timeouts*.
+2. **Escalabilidad lineal hasta 50 usuarios:** El rendimiento escaló de **12.41 req/s** (10 usuarios) a **70.14 req/s** (50 usuarios), manteniendo la latencia mediana por debajo de **15 ms** y el percentil 95 (`P95`) en **20–28 ms**.
+3. **Cuello de botella identificado (*Cold Start*):** La carga perezosa (*lazy loading*) del modelo durante la primera invocación a `/predict` introduce un pico puntual de latencia (~6.5 s). En un entorno productivo con autoescalado horizontal, se recomienda pre-cargar el modelo durante el evento `startup` de FastAPI (`lifespan`) para eliminar picos en frío en los primeros usuarios.
+
+### 20.4 Reproducción local de las pruebas de carga
+
+1. Levantar la infraestructura con Docker Compose:
+   ```bash
+   docker compose up -d --build
