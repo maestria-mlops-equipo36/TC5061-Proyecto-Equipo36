@@ -1,6 +1,6 @@
 # Model Card — MiBici P1: Predicción de demanda diaria
 
-**Equipo 36 | TC5061 — MLOps**  
+**Equipo 36 | TC5061 — MLOps**\
 **Fecha de actualización:** 26 de noviembre de 2026
 
 ## 1. Información general del modelo
