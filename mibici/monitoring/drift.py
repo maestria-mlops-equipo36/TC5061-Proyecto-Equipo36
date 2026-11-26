@@ -157,7 +157,7 @@ def ejecutar_reporte_drift(
                 drift_detected = bool(info.get("drift_detected", False))
                 drift_score = float(info.get("drift_score", 0.0))
                 stattest = str(info.get("stattest_name", ""))
-                threshold = float(info.get("drift_threshold", 0.05))
+                threshold = float(info["stattest_threshold"])
                 col_data = {
                     "column": col,
                     "drift_detected": drift_detected,
@@ -200,8 +200,21 @@ def _generar_figuras_drift(
     colores = ["#d9534f" if d else "#5cb85c" for d in df_plot["drift_detected"]]
 
     bars = plt.barh(df_plot["column"], df_plot["drift_score"], color=colores, edgecolor="black", alpha=0.85)
-    plt.axvline(0.1, color="orange", linestyle="--", label="Umbral de Alerta Drift (0.1)")
-    plt.title("Data Drift Score por Variable (Evidently - Distancia Wasserstein)", fontsize=13, fontweight="bold", pad=12)
+    # Mostrar los umbrales utilizados por Evidently
+    for threshold in sorted(df_plot["threshold"].unique()):
+        plt.axvline(
+            threshold,
+            color="orange",
+            linestyle="--",
+            label=f"Umbral de Drift ({threshold:g})",
+        )
+
+    plt.title(
+        "Data Drift Score por Variable (Evidently)",
+        fontsize=13,
+        fontweight="bold",
+        pad=12,
+    )
     plt.xlabel("Drift Score (Mayor score = Mayor desviación)", fontsize=11)
     plt.legend(loc="lower right")
     plt.tight_layout()
@@ -266,7 +279,7 @@ def _generar_figuras_drift(
     plt.figure(figsize=(10, 5))
     sns.kdeplot(df_ref[TARGET_COL_P1], label=f"Referencia (Media={df_ref[TARGET_COL_P1].mean():.1f})", color="#2ca02c", linewidth=2.5, fill=True, alpha=0.3)
     sns.kdeplot(df_curr[TARGET_COL_P1], label=f"Actual (Media={df_curr[TARGET_COL_P1].mean():.1f})", color="#d62728", linewidth=2.5, fill=True, alpha=0.3)
-    plt.title("Concept/Target Drift: Demanda Diaria (viajes_iniciados)", fontsize=13, fontweight="bold", pad=12)
+    plt.title("Target Drift: Demanda Diaria (viajes_iniciados)", fontsize=13, fontweight="bold", pad=12)
     plt.xlabel("Número de Viajes Iniciados por Estación al Día", fontsize=11)
     plt.ylabel("Densidad", fontsize=11)
     plt.legend(loc="upper right", fontsize=11)
