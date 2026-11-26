@@ -23,19 +23,19 @@ Para auditar la estabilidad estadística del sistema en producción ([`mibici/mo
 
 | Variable | Tipo | Prueba Estadística | Drift Score | Umbral | Drift Detectado |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| `viajes_iniciados` *(Target)* | Continua | Wasserstein (normed) | **0.2664** | 0.05 | **SÍ** |
-| `viajes_dia_anterior` | Continua | Wasserstein (normed) | **0.2424** | 0.05 | **SÍ** |
-| `promedio_7_dias` | Continua | Wasserstein (normed) | **0.2090** | 0.05 | **SÍ** |
-| `viajes_hace_7_dias` | Continua | Wasserstein (normed) | **0.1625** | 0.05 | **SÍ** |
-| `promedio_14_dias` | Continua | Wasserstein (normed) | **0.1592** | 0.05 | **SÍ** |
-| `mes` | Categórica | Wasserstein (normed) | **1.1629** | 0.05 | **SÍ** |
-| `promedio_28_dias` | Continua | Wasserstein (normed) | 0.0955 | 0.05 | No |
-| `viajes_hace_14_dias` | Continua | Wasserstein (normed) | 0.0711 | 0.05 | No |
-| `promedio_mismo_dia_4_semanas` | Continua | Wasserstein (normed) | 0.0704 | 0.05 | No |
-| `dia_semana` | Discreta | Wasserstein (normed) | 0.0632 | 0.05 | No |
-| `viajes_hace_28_dias` | Continua | Wasserstein (normed) | 0.0228 | 0.05 | No |
-| `es_fin_de_semana` | Binaria | Jensen-Shannon | 0.0158 | 0.05 | No |
-| `estacion_id` | Identificador | Wasserstein (normed) | 0.0000 | 0.05 | No |
+| `viajes_iniciados` *(Target)* | Continua | Wasserstein (normed) | **0.2664** | 0.10 | **SÍ** |
+| `viajes_dia_anterior` | Continua | Wasserstein (normed) | **0.2424** | 0.10 | **SÍ** |
+| `promedio_7_dias` | Continua | Wasserstein (normed) | **0.2090** | 0.10 | **SÍ** |
+| `viajes_hace_7_dias` | Continua | Wasserstein (normed) | **0.1625** | 0.10 | **SÍ** |
+| `promedio_14_dias` | Continua | Wasserstein (normed) | **0.1592** | 0.10 | **SÍ** |
+| `mes` | Categórica | Wasserstein (normed) | **1.1629** | 0.10 | **SÍ** |
+| `promedio_28_dias` | Continua | Wasserstein (normed) | 0.0955 | 0.10 | No |
+| `viajes_hace_14_dias` | Continua | Wasserstein (normed) | 0.0711 | 0.10 | No |
+| `promedio_mismo_dia_4_semanas` | Continua | Wasserstein (normed) | 0.0704 | 0.10 | No |
+| `dia_semana` | Discreta | Wasserstein (normed) | 0.0632 | 0.10 | No |
+| `viajes_hace_28_dias` | Continua | Wasserstein (normed) | 0.0228 | 0.10 | No |
+| `es_fin_de_semana` | Binaria | Jensen-Shannon | 0.0158 | 0.10 | No |
+| `estacion_id` | Identificador | Wasserstein (normed) | 0.0000 | 0.10 | No |
 
 ### 2.2 Interpretación Técnica y de Negocio del Drift
 
